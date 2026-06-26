@@ -107,7 +107,13 @@ export default function App() {
             edges={edges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
-            onNodeClick={(_event, node) => setSelectedNodeId(node.id)}
+            onNodeClick={(_event, node) => {
+              if (node.type === 'architectureNode') {
+                setSelectedNodeId(node.id);
+              } else {
+                setSelectedNodeId(null);
+              }
+            }}
             onPaneClick={() => setSelectedNodeId(null)}
             fitView
             minZoom={0.3}

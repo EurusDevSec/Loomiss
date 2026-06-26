@@ -40,6 +40,17 @@ echo "✅ Frontend built successfully."
 # 3. Build Backend Go Daemon
 echo ""
 echo "Building Backend Go binary..."
+
+# Stop any running loomiss processes to release file locks
+echo "Stopping any running Loomiss daemon processes..."
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
+    taskkill //F //IM loomiss.exe 2>/dev/null || true
+    sleep 1
+else
+    pkill -f loomiss 2>/dev/null || true
+    sleep 1
+fi
+
 cd backend
 
 # Determine executable name based on OS type

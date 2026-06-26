@@ -7,8 +7,10 @@ import (
 	"io/fs"
 	"loomiss/usecase"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -17,6 +19,9 @@ var frontendFS embed.FS
 
 // StartServer khởi chạy HTTP Server phục vụ giao diện và API
 func StartServer(port int) error {
+	// Tự động giải phóng cổng nếu bị chiếm dụng trước đó
+	killProcessOnPort(port)
+
 	// Lấy thư mục dist bên trong embed.FS
 	subFS, err := fs.Sub(frontendFS, "dist")
 	if err != nil {
@@ -52,6 +57,46 @@ func StartServer(port int) error {
 		}
 		
 		json.NewEncoder(w).Encode(graph)
+	})
+
+	// API trả về log thực tế của container
+	mux.HandleFunc("/api/logs", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		nodeID := r.URL.Query().Get("nodeId")
+		if nodeID == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "nodeId is required"})
+			return
+		}
+
+		// Chạy lệnh docker logs để lấy log thực tế
+		cmd := exec.Command("docker", "logs", "--tail", "50", nodeID)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			// Thử tìm tên container phù hợp trong list docker ps
+			psCmd := exec.Command("docker", "ps", "--format", "{{.Names}}")
+			psOut, psErr := psCmd.CombinedOutput()
+			if psErr == nil {
+				names := strings.Split(string(psOut), "\n")
+				for _, name := range names {
+					name = strings.TrimSpace(name)
+					if strings.Contains(name, nodeID) {
+						cmd2 := exec.Command("docker", "logs", "--tail", "50", name)
+						output2, err2 := cmd2.CombinedOutput()
+						if err2 == nil {
+							json.NewEncoder(w).Encode(map[string]string{"logs": string(output2)})
+							return
+						}
+					}
+				}
+			}
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": fmt.Sprintf("Không thể lấy log từ container '%s'. Đảm bảo Docker đang chạy và container hoạt động.", nodeID),
+			})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]string{"logs": string(output)})
 	})
 
 	// API nhận thông tin intent của AI Agent từ MCP server
@@ -145,4 +190,58 @@ func openBrowser(url string) {
 	}
 
 	exec.Command(cmd, args...).Start()
+}
+
+// killProcessOnPort tự động tìm và kết liễu tiến trình đang chiếm dụng cổng TCP truyền vào
+func killProcessOnPort(port int) {
+	if runtime.GOOS == "windows" {
+		// Tìm PID đang LISTEN trên cổng chỉ định
+		cmd := exec.Command("cmd", "/c", fmt.Sprintf("netstat -ano | findstr LISTENING | findstr :%d", port))
+		out, err := cmd.Output()
+		if err != nil {
+			return // Cổng không bị chiếm dụng
+		}
+
+		lines := strings.Split(string(out), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			fields := strings.Fields(line)
+			if len(fields) >= 5 {
+				localAddr := fields[1]
+				if strings.HasSuffix(localAddr, fmt.Sprintf(":%d", port)) {
+					pidStr := fields[len(fields)-1]
+					var pidVal int
+					fmt.Sscanf(pidStr, "%d", &pidVal)
+					if pidVal > 0 && pidVal != os.Getpid() {
+						fmt.Printf("[Loomiss] Phát hiện cổng %d đang bị chiếm dụng bởi tiến trình PID %d. Đang tự động giải phóng...\n", port, pidVal)
+						// Buộc dừng tiến trình cũ
+						killCmd := exec.Command("taskkill", "/F", "/PID", pidStr)
+						_ = killCmd.Run()
+						// Chờ hệ điều hành giải phóng socket
+						time.Sleep(500 * time.Millisecond)
+					}
+				}
+			}
+		}
+	} else {
+		// Unix-like (Linux/macOS)
+		cmd := exec.Command("sh", "-c", fmt.Sprintf("lsof -t -i:%d", port))
+		out, err := cmd.Output()
+		if err == nil {
+			pidStr := strings.TrimSpace(string(out))
+			if pidStr != "" {
+				var pidVal int
+				fmt.Sscanf(pidStr, "%d", &pidVal)
+				if pidVal > 0 && pidVal != os.Getpid() {
+					fmt.Printf("[Loomiss] Phát hiện cổng %d đang bị chiếm dụng bởi tiến trình PID %d. Đang tự động giải phóng...\n", port, pidVal)
+					killCmd := exec.Command("kill", "-9", pidStr)
+					_ = killCmd.Run()
+					time.Sleep(500 * time.Millisecond)
+				}
+			}
+		}
+	}
 }

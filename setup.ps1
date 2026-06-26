@@ -39,6 +39,16 @@ Write-Host "✅ Frontend built successfully." -ForegroundColor Green
 
 # 3. Build Go Daemon
 Write-Host "`nBuilding Backend Go binary..." -ForegroundColor Cyan
+
+# Stop any running loomiss processes to release the file lock
+Write-Host "Stopping any running Loomiss daemon processes..." -ForegroundColor Yellow
+$processes = Get-Process -Name "loomiss" -ErrorAction SilentlyContinue
+if ($processes) {
+    Stop-Process -Name "loomiss" -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
+    Write-Host "✅ Stopped existing Loomiss processes." -ForegroundColor Green
+}
+
 Push-Location backend
 go build -o ../loomiss.exe main.go
 Pop-Location

@@ -24,12 +24,16 @@ export default function TrafficEdge({
     targetPosition,
   });
 
+  const isDependsOn = typeof label === 'string' && (label.includes('Depends On') || label.includes('depends_on'));
+
   // Calculate speed of particles based on simulated network traffic (bytes/sec)
   const network = data?.network as number | undefined;
   let dur = '1.8s';
   let showParticle = true;
 
-  if (network !== undefined) {
+  if (isDependsOn) {
+    showParticle = false;
+  } else if (network !== undefined) {
     if (network === 0) {
       showParticle = false;
     } else if (network > 50000) {
@@ -47,7 +51,7 @@ export default function TrafficEdge({
 
   // Format label string (add custom metrics inside the label if present)
   let displayLabel = label;
-  if (network && typeof network === 'number') {
+  if (network && typeof network === 'number' && !isDependsOn) {
     const kbSec = (network / 1024).toFixed(1);
     displayLabel = label ? `${label} (${kbSec} KB/s)` : `${kbSec} KB/s`;
   }

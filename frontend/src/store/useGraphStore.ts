@@ -195,7 +195,11 @@ const formatGraphData = (rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edg
     cleanLabel = cleanLabel.replace(/🐘|🐬|💾|📡|⚡|❤️|🐳|🌐|⚙️|🗄️|☁️|🐙|🧓|🔥|📊/g, '').trim();
 
     const logoSlug = getLogoSlug(node.id, node.type, cleanLabel, node.metadata?.image, node.metadata);
-    const logoUrl = logoSlug ? `https://cdn.simpleicons.org/${logoSlug}` : null;
+    const logoUrl = logoSlug === 'redis'
+      ? 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/redis/redis-original.svg'
+      : logoSlug
+      ? `https://cdn.simpleicons.org/${logoSlug}`
+      : null;
 
     return {
       id: node.id,
