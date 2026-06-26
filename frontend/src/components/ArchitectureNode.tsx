@@ -1,5 +1,5 @@
 import { Handle, Position } from '@xyflow/react';
-import { Database, Server, Globe } from 'lucide-react';
+import { Database, Server, Globe, HelpCircle } from 'lucide-react';
 import { useState } from 'react';
 
 interface ArchitectureNodeProps {
@@ -32,18 +32,21 @@ export default function ArchitectureNode({ data, targetPosition, sourcePosition 
         return <Globe className="h-5 w-5 text-cyan-400" />;
       case 'database':
         return <Database className="h-5 w-5 text-amber-500" />;
+      case 'unknown_service':
+        return <HelpCircle className="h-5 w-5 text-zinc-400" />;
       default:
         return <Server className="h-5 w-5 text-purple-400" />;
     }
   };
 
   const hasLogo = data.logoUrl && !imgError;
+  const isGhost = data.type === 'unknown_service';
 
   return (
     <div
       className={`glass-panel p-3 rounded-xl border-2 w-[240px] text-left transition-all duration-300 select-none ${
         data.activeAgentNode ? 'animate-ripple' : ''
-      }`}
+      } ${isGhost ? 'border-dashed' : ''}`}
       style={{
         borderColor: data.activeAgentNode ? '#22c55e' : data.borderClr,
         boxShadow: data.activeAgentNode ? '0 0 25px rgba(34, 197, 150, 0.6)' : `0 0 15px ${data.shadowClr}`,
