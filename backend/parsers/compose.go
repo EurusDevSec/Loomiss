@@ -62,6 +62,7 @@ func ParseDockerCompose(filePath string) ([]domain.Node, []domain.Edge, error) {
 			Type:     nodeType,
 			Status:   "active",
 			Metadata: metadata,
+			ParentID: "docker-compose-group",
 		})
 
 		// 3. Trích xuất dependencies (DependsOn)
@@ -74,6 +75,14 @@ func ParseDockerCompose(filePath string) ([]domain.Node, []domain.Edge, error) {
 				Label:  "Depends On",
 			})
 		}
+	}
+
+	if len(nodes) > 0 {
+		nodes = append(nodes, domain.Node{
+			ID:    "docker-compose-group",
+			Label: "🐳 Docker Compose Stack",
+			Type:  "group",
+		})
 	}
 
 	return nodes, edges, nil

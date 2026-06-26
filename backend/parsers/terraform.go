@@ -72,6 +72,7 @@ func ParseTerraformDirectory(dirPath string) ([]domain.Node, []domain.Edge, erro
 						"provider":      strings.Split(resType, "_")[0],
 						"resource_type": resType,
 					},
+					ParentID: "terraform-group",
 				})
 
 				// Tìm các tham chiếu biến bên trong các thuộc tính
@@ -96,6 +97,14 @@ func ParseTerraformDirectory(dirPath string) ([]domain.Node, []domain.Edge, erro
 		if resourceMap[edge.Source] && resourceMap[edge.Target] {
 			validEdges = append(validEdges, edge)
 		}
+	}
+
+	if len(nodes) > 0 {
+		nodes = append(nodes, domain.Node{
+			ID:    "terraform-group",
+			Label: "☁️ Terraform Cloud Tier",
+			Type:  "group",
+		})
 	}
 
 	return nodes, validEdges, nil

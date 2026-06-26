@@ -24,9 +24,21 @@ func (p *AppLevelParser) CanParse(workspacePath string) bool {
 			if shouldSkipDir(path, info, workspacePath) {
 				return filepath.SkipDir
 			}
+			if info.Name() == ".github" {
+				workflowsPath := filepath.Join(path, "workflows")
+				if subInfo, subErr := os.Stat(workflowsPath); subErr == nil && subInfo.IsDir() {
+					found = true
+					return filepath.SkipDir
+				}
+			}
+			if strings.ToLower(info.Name()) == "grafana" {
+				found = true
+				return filepath.SkipDir
+			}
 			return nil
 		}
-		if info.Name() == "package.json" || info.Name() == "go.mod" {
+		nameLower := strings.ToLower(info.Name())
+		if info.Name() == "package.json" || info.Name() == "go.mod" || info.Name() == "Jenkinsfile" || nameLower == "prometheus.yml" || nameLower == "prometheus.yaml" || nameLower == "grafana.ini" {
 			found = true
 			return filepath.SkipDir
 		}
@@ -46,15 +58,42 @@ func (p *AppLevelParser) Parse(workspacePath string) ([]domain.Node, []domain.Ed
 	var nodes []domain.Node
 	var edges []domain.Edge
 
+	var hasGithubActions bool
+	var hasJenkins bool
+	var hasPrometheus bool
+	var hasGrafana bool
+
 	err := filepath.Walk(workspacePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
+
+		nameLower := strings.ToLower(info.Name())
+
 		if info.IsDir() {
 			if shouldSkipDir(path, info, workspacePath) {
 				return filepath.SkipDir
 			}
+			if info.Name() == ".github" {
+				workflowsPath := filepath.Join(path, "workflows")
+				if subInfo, subErr := os.Stat(workflowsPath); subErr == nil && subInfo.IsDir() {
+					hasGithubActions = true
+				}
+			}
+			if nameLower == "grafana" {
+				hasGrafana = true
+			}
 			return nil
+		}
+
+		if info.Name() == "Jenkinsfile" {
+			hasJenkins = true
+		}
+		if nameLower == "prometheus.yml" || nameLower == "prometheus.yaml" {
+			hasPrometheus = true
+		}
+		if nameLower == "grafana.ini" {
+			hasGrafana = true
 		}
 
 		dir := filepath.Dir(path)
@@ -75,6 +114,69 @@ func (p *AppLevelParser) Parse(workspacePath string) ([]domain.Node, []domain.Ed
 
 		return nil
 	})
+
+	hasApps := false
+	for _, n := range nodes {
+		if n.Type != "group" {
+			hasApps = true
+			break
+		}
+	}
+
+	if hasApps {
+		nodes = append(nodes, domain.Node{
+			ID:    "app-workspace-group",
+			Label: "📦 Local Applications Tier",
+			Type:  "group",
+		})
+	}
+
+	if hasGithubActions || hasJenkins || hasPrometheus || hasGrafana {
+		nodes = append(nodes, domain.Node{
+			ID:    "devops-monitoring-group",
+			Label: "🛠️ DevOps & Observability Tier",
+			Type:  "group",
+		})
+
+		if hasGithubActions {
+			nodes = append(nodes, domain.Node{
+				ID:       "github-actions",
+				Label:    "🐙 GitHub Actions CI/CD",
+				Type:     "app",
+				Status:   "active",
+				ParentID: "devops-monitoring-group",
+			})
+		}
+		if hasJenkins {
+			nodes = append(nodes, domain.Node{
+				ID:       "jenkins",
+				Label:    "🧓 Jenkins Pipelines",
+				Type:     "app",
+				Status:   "active",
+				ParentID: "devops-monitoring-group",
+			})
+		}
+		if hasPrometheus {
+			nodes = append(nodes, domain.Node{
+				ID:       "prometheus",
+				Label:    "🔥 Prometheus Server",
+				Type:     "database",
+				Status:   "active",
+				Metadata: map[string]string{"ports": "9090"},
+				ParentID: "devops-monitoring-group",
+			})
+		}
+		if hasGrafana {
+			nodes = append(nodes, domain.Node{
+				ID:       "grafana",
+				Label:    "📊 Grafana Dashboards",
+				Type:     "app",
+				Status:   "active",
+				Metadata: map[string]string{"ports": "3000"},
+				ParentID: "devops-monitoring-group",
+			})
+		}
+	}
 
 	return nodes, edges, err
 }
@@ -123,7 +225,7 @@ func parsePackageJSON(path, dir, folderName string) ([]domain.Node, []domain.Edg
 	id = strings.ReplaceAll(id, "@", "")
 	id = strings.ReplaceAll(id, "/", "-")
 
-	envMetadata, envEdges, envDBNodes := parseEnvFile(dir, id)
+	envMetadata, envEdges, envDBNodes := parseEnvFile(dir, id, "app-workspace-group")
 
 	metadata := map[string]string{
 		"path": path,
@@ -138,6 +240,7 @@ func parsePackageJSON(path, dir, folderName string) ([]domain.Node, []domain.Edg
 		Type:     nodeType,
 		Status:   "active",
 		Metadata: metadata,
+		ParentID: "app-workspace-group",
 	}
 
 	nodes = append(nodes, appNode)
@@ -174,7 +277,7 @@ func parseGoMod(path, dir, folderName string) ([]domain.Node, []domain.Edge) {
 		id = folderName
 	}
 
-	envMetadata, envEdges, envDBNodes := parseEnvFile(dir, id)
+	envMetadata, envEdges, envDBNodes := parseEnvFile(dir, id, "app-workspace-group")
 
 	metadata := map[string]string{
 		"path": path,
@@ -189,6 +292,7 @@ func parseGoMod(path, dir, folderName string) ([]domain.Node, []domain.Edge) {
 		Type:     "app",
 		Status:   "active",
 		Metadata: metadata,
+		ParentID: "app-workspace-group",
 	}
 
 	nodes = append(nodes, appNode)
@@ -198,7 +302,7 @@ func parseGoMod(path, dir, folderName string) ([]domain.Node, []domain.Edge) {
 	return nodes, edges
 }
 
-func parseEnvFile(dir string, parentID string) (map[string]string, []domain.Edge, []domain.Node) {
+func parseEnvFile(dir string, parentID string, parentGroupID string) (map[string]string, []domain.Edge, []domain.Node) {
 	metadata := make(map[string]string)
 	var edges []domain.Edge
 	var nodes []domain.Node
@@ -331,6 +435,7 @@ func parseEnvFile(dir string, parentID string) (map[string]string, []domain.Edge
 			Type:     "database",
 			Status:   "active",
 			Metadata: dbMetadata,
+			ParentID: parentGroupID,
 		}
 
 		edgeLabel := "Connects"

@@ -4,9 +4,10 @@ package domain
 type Node struct {
 	ID       string            `json:"id"`
 	Label    string            `json:"label"`
-	Type     string            `json:"type"`     // gateway, app, database, network
+	Type     string            `json:"type"`     // gateway, app, database, network, group
 	Status   string            `json:"status"`   // active, error
 	Metadata map[string]string `json:"metadata"` // ports, environment variables, image
+	ParentID string            `json:"parentId,omitempty"`
 }
 
 // Edge đại diện cho liên kết mạng giữa các node

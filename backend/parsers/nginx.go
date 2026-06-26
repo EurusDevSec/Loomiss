@@ -65,6 +65,7 @@ func ParseNginxConfig(filePath string) ([]domain.Node, []domain.Edge, error) {
 			Metadata: map[string]string{
 				"ports": portsStr,
 			},
+			ParentID: "public-gateway-group",
 		})
 
 		// 3. Tạo các Edge định tuyến
@@ -93,6 +94,14 @@ func ParseNginxConfig(filePath string) ([]domain.Node, []domain.Edge, error) {
 				Label:  edgeLabel,
 			})
 		}
+	}
+
+	if len(nodes) > 0 {
+		nodes = append(nodes, domain.Node{
+			ID:    "public-gateway-group",
+			Label: "🌐 Public Gateway Tier",
+			Type:  "group",
+		})
 	}
 
 	return nodes, edges, nil

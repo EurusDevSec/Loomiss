@@ -36,6 +36,11 @@ func CompileGraph(workspacePath string) (*domain.GraphSchema, error) {
 				existing.Label = node.Label
 			}
 
+			// Gộp ParentID
+			if existing.ParentID == "" && node.ParentID != "" {
+				existing.ParentID = node.ParentID
+			}
+
 			// Gộp Metadata
 			if existing.Metadata == nil {
 				existing.Metadata = make(map[string]string)

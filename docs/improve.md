@@ -1,59 +1,55 @@
-Bạn đang chạm đến một trong những bài toán kinh điển và thực tế nhất của các hệ thống Observability (giám sát) và Static Analysis: **Bài toán "Partial Observability" (Tính khả quan sát một phần).**
+Nhìn vào giao diện UI hiện tại của Loomiss, thiết kế rất có gu và mang đậm chất "cyberpunk/devops" với màu nền tối và viền neon. Việc tool đã có thể chạy trực tiếp từ file `.exe` Go và dựng web UI phân tích được các node/edge cơ bản là một bước tiến cực kỳ lớn.
 
-Thực tế là 80% các dự án ngoài kia sẽ không dùng "full combo" Docker + Terraform + Nginx. Sẽ có dự án chỉ chạy Docker thuần, có dự án ném thẳng code lên EC2 qua script, và có dự án dùng Kubernetes thay vì Terraform.
+Để trả lời hai câu hỏi của bạn, chúng ta sẽ đi từ tiêu chuẩn lý thuyết kiến trúc đến những "nỗi đau" thực tế mà dev gặp phải khi code.
 
-Nếu Loomiss chỉ chạy được khi có đủ cả 3 file này, tool sẽ trở nên rất cứng nhắc (brittle). Để giải quyết triệt để nỗi trăn trở này ngay từ Phase 2, chúng ta cần thiết kế lại tư duy của hàm `CompileGraph` và áp dụng 3 chiến lược thiết kế lõi dưới đây:
+### 1. Các tiêu chí của một "Kiến trúc tiêu chuẩn và Hợp lý"
 
-### 1. Khái niệm "Ghost Node" (Node Hư ảnh)
+Một sơ đồ kiến trúc (như hệ thống bán lẻ giày mà bạn từng cấu hình với VPC, EC2, ALB) được coi là chuẩn chỉnh và hợp lý khi nó thỏa mãn các nguyên tắc cốt lõi sau. Khi người dùng nhìn vào biểu đồ của Loomiss, họ phải thấy được các lớp này được phân tách rõ ràng:
 
-Khi một parser đọc được một nửa thông tin nhưng không tìm thấy file cấu hình của nửa còn lại, Loomiss vẫn phải vẽ ra luồng, nhưng sẽ đánh dấu nó là một **Ghost Node** (hoặc Unresolved Node).
+* **Phân lớp (Tiering) & Phân tách trách nhiệm:**
+* **Lớp Gateway/Public:** Nhận traffic từ ngoài vào (Internet $\rightarrow$ Load Balancer / Nginx Proxy).
+* **Lớp Ứng dụng (App/Compute):** Xử lý logic nghiệp vụ (Go Backend, React Frontend). Lớp này phải ở trạng thái *Stateless* (không lưu dữ liệu cứng).
+* **Lớp Dữ liệu (Data/Stateful):** Chứa Database (Postgres, AWS RDS) và Cache (Redis).
+* *Tiêu chí đánh giá trên Loomiss:* Nếu thấy mũi tên nối thẳng từ Internet hoặc Nginx đâm xuyên qua Backend để chọc thẳng vào Database, kiến trúc đó đang sai nguyên tắc.
 
-* **Kịch bản:** Dự án chỉ có file `nginx.conf`, bên trong có dòng `proxy_pass http://localhost:3000`. Nhưng dự án **không hề có** `docker-compose.yml` để định nghĩa cái gì đang chạy ở port 3000.
-* **Cách giải quyết:** Nginx Parser vẫn tạo ra 1 Node Nginx và 1 Edge trỏ đến port 3000. Hàm `CompileGraph` khi tổng hợp lại không tìm thấy định nghĩa của port 3000, nó sẽ tự động tạo ra một Node loại `"unknown"` (Ghost Node) với nhãn `Target: :3000`.
-* **Trên UI (React Flow):** Node này sẽ có viền nét đứt (dashed border) màu xám, ngụ ý rằng: *"Tôi thấy luồng dữ liệu đi vào cổng 3000, nhưng hạ tầng hiện tại không khai báo rõ cái gì đang hứng luồng này"*.
 
-### 2. Thiết kế Go theo "Plugin Pattern" (Sử dụng Interface)
+* **Bảo mật & Cách ly mạng (Network Isolation):**
+* Database và Redis tuyệt đối không được mở port ra public network (không được expose port ra ngoài host nếu dùng Docker, hoặc phải nằm trong Private Subnet nếu dùng AWS).
+* *Tiêu chí đánh giá trên Loomiss:* Loomiss cần làm nổi bật (hoặc cảnh báo đỏ) nếu phát hiện node Database expose port `3306` hoặc `5432` ra IP `0.0.0.0`.
 
-Đừng viết hàm `CompileGraph` theo kiểu gọi cứng `ParseDocker()`, `ParseTerraform()`. Hãy định nghĩa một `Interface` chuẩn mực ngay từ Bước 1. Điều này giúp dự án của bất kỳ ai, dùng tech stack gì, cũng có thể được Loomiss hỗ trợ dần dần trong tương lai.
 
-Bạn có thể bổ sung kiến trúc này vào Phase 2:
+* **Điểm gián đoạn & Nút thắt cổ chai (Single Point of Failure):**
+* Nhiều backend node có trỏ về cùng một Redis không? Các backend có đang giao tiếp chéo với nhau tạo thành mạng lưới rối rắm (spaghetti) thay vì đi qua một message queue không?
 
-```go
-// Định nghĩa một hợp đồng chung cho TẤT CẢ các parser
-type ConfigParser interface {
-    // Trả về true nếu dự án có chứa file mà parser này hỗ trợ (vd: tìm thấy docker-compose.yml)
-    CanParse(workspacePath string) bool 
-    
-    // Thực hiện quét và trả về các mảnh ghép Graph (Sub-graph)
-    Parse(workspacePath string) ([]Node, []Edge, error) 
-}
 
-```
+* **Rõ ràng về định tuyến (Routing Rules):**
+* Các quy tắc `proxy_pass` phải rõ ràng. Gateway port 80 phải biết chính xác nó đang trỏ traffic vào port `8080` của Backend, chứ không phải đi vào hư vô.
 
-Khi đó, luồng chạy của `CompileGraph` sẽ cực kỳ linh hoạt: nó sẽ duyệt qua danh sách tất cả các Parser (Docker, Terraform, Nginx). Parser nào `CanParse() == true` thì mới gọi `Parse()`.
-Nếu một dự án của người dùng chỉ có đúng file `nginx.conf`, thì chỉ có Nginx Parser chạy, trả về graph của Nginx. UI vẫn hiển thị bình thường mà không bị crash.
 
-### 3. Fallback to App Level (Nhận diện cấp độ ứng dụng - Dành cho tương lai)
 
-Khi một dự án hoàn toàn **trắng tay** về cấu hình hạ tầng (không Docker, không Terraform, không Nginx), bạn sẽ làm gì?
+### 2. Những "Nỗi đau" (Pain Points) chí mạng của Dev/DevOps
 
-Bạn hoàn toàn có thể viết thêm các **Lightweight Parsers (Parser siêu nhẹ)** trong tương lai để quét file gốc của project:
+Loomiss sinh ra không chỉ để vẽ cho đẹp, mà để chữa những căn bệnh trầm kha này trong quá trình làm dự án:
 
-* Thấy `package.json` có script start gọi `next dev` $\rightarrow$ Tự động tạo Node `"app": Next.js (Frontend)`.
-* Thấy `go.mod` và `main.go` $\rightarrow$ Tự động tạo Node `"app": Go Backend`.
-* Thấy `.env` có `DB_HOST=rds-aws...` $\rightarrow$ Tự động tạo Node `"database": RDS` và vẽ đường line nối Backend với RDS.
+**Nỗi đau 1: "Sửa một đằng, hỏng một nẻo" (Configuration Drift & Broken Links)**
 
-### Cập nhật lại Bước 5 (Graph Compiling) trong Phase 2 của bạn
+* **Vấn đề:** Dev đổi port của Go Backend từ `8080` sang `8081` trong file `.env` hoặc `docker-compose.yml`, nhưng quên cập nhật file `nginx.conf`. Hệ thống sập vì Nginx vẫn trỏ proxy về `8080`.
+* **Loomiss giải quyết:** Ngay khi dev lưu file, node Backend trên Loomiss đổi port thành `8081`, và sợi dây kết nối từ Nginx lập tức bị đứt (chuyển sang màu đỏ/báo lỗi). Dev nhìn thấy ngay "điểm mù" của mình.
 
-Để Kế hoạch Phase 2 của bạn hoàn hảo hơn, hãy tinh chỉnh lại **Bước 5** như sau:
+**Nỗi đau 2: Rối loạn vì Spaghetti Port (Sợ đụng vào code cũ)**
 
-> **Bước 5: Hợp nhất đồ thị (Graph Compiling & Resolving)**
-> * Duyệt qua danh sách các `ConfigParser` đã đăng ký (Docker, Terraform, Nginx).
-> * Thu thập toàn bộ Nodes và Edges từ các parser hoạt động.
-> * **Giai đoạn Resolving (Giải quyết xung đột/thiếu sót):** Hợp nhất các Node trùng IP/Port. Nếu có một Edge trỏ đến một đích chưa được định nghĩa (ví dụ: Nginx trỏ vào port 8080 nhưng không có service nào khai báo port 8080), tự động sinh ra một `Ghost Node` (Type: `unknown_service`) để đảm bảo luồng traffic không bị đứt đoạn trên sơ đồ.
-> 
-> 
+* **Vấn đề:** Khi join vào một dự án có sẵn, hệ thống có chục cái microservices, vài cái Nginx lồng nhau. Dev không dám sửa file config vì không biết "Port 3000 này đang thằng nào dùng?", "Đổi cái này thì service nào bị ảnh hưởng?". Đọc file text cực kỳ rối não.
+* **Loomiss giải quyết:** Chỉ cần mở UI lên là thấy rõ "bức tranh toàn cảnh". Rà chuột vào Go Backend là thấy ngay nó bị phụ thuộc bởi (Depends On) những service nào, giúp dev tự tin sửa code hạ tầng.
 
-Cách tiếp cận này giúp Loomiss trở thành một công cụ cực kỳ "bao dung" (fault-tolerant). Người dùng có file gì, bạn vẽ file đó, không ép buộc họ phải có kiến trúc hoàn hảo từ đầu.
+**Nỗi đau 3: Bị AI Coding Agent "qua mặt"**
 
-Bạn có muốn tôi đi sâu vào cách viết logic thuật toán cho "Giai đoạn Resolving" (Hợp nhất các node từ nhiều file khác nhau mà không bị trùng lặp) trong Go không?
+* **Vấn đề:** Khi sử dụng các AI Agent (như Cursor hay Devin) để hỗ trợ cấu hình hạ tầng, dev chỉ ra lệnh: *"Thêm Redis cache cho Go backend"*. AI tự động nhảy vào sửa 3, 4 file cùng lúc. Dev review code bằng cách đọc diff text rất khó hình dung AI vừa làm gì, có lỡ tay mở port public hay không.
+* **Loomiss giải quyết:** Biến quá trình agent code thành dạng hình ảnh. Lúc AI sửa file, node Redis mới xuất hiện và luồng traffic (sợi dây đứt khúc trên hình của bạn) chạy hiệu ứng (pulse), người review nắm được kiến trúc ngay lập tức.
+
+**Nỗi đau 4: Tài liệu chết (Dead Documentation)**
+
+* **Vấn đề:** Bất cứ khi nào thiết kế kiến trúc xong, team phải lên Draw.io hoặc dùng Diagram as Code để vẽ. Nhưng chỉ 2 tuần sau, code thay đổi, sơ đồ thì không ai cập nhật $\rightarrow$ Tài liệu thành đống rác vô giá trị.
+* **Loomiss giải quyết:** Tool chính là tài liệu sống (Living Document). Source code chính là Single Source of Truth. Sơ đồ tự động được vẽ từ thực tế của code.
+
+**Nhận xét về hình ảnh hiện tại:**
+Giao diện bạn làm đang đi rất đúng hướng. Sợi dây `proxy pass (8080)` và `Depends On` thể hiện rất rõ tư duy hạ tầng. Bước tiếp theo, hãy thử giả lập kịch bản "đứt gãy" (sửa sai port trong file config) để xem UI phản ứng lại thế nào, đó sẽ là tính năng "ăn tiền" nhất của tool này.
