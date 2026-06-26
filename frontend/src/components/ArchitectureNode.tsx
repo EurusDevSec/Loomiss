@@ -51,6 +51,28 @@ export default function ArchitectureNode({ data, targetPosition, sourcePosition 
   const extraText = theme === 'dark' ? 'text-zinc-500' : 'text-slate-400';
   const logoBoxBg = theme === 'dark' ? 'bg-zinc-950 border-zinc-800/80' : 'bg-slate-50 border-slate-200/80';
 
+  const isDiffAdd = (data as any).isDiffAdd;
+  const isDiffDelete = (data as any).isDiffDelete;
+
+  let nodeBorderColor = data.borderClr;
+  if (data.activeAgentNode) nodeBorderColor = '#22c55e';
+  else if (isDiffAdd) nodeBorderColor = '#22c55e';
+  else if (isDiffDelete) nodeBorderColor = '#ef4444';
+
+  let nodeBoxShadow = theme === 'dark' 
+    ? `0 4px 20px rgba(0, 0, 0, 0.35), 0 0 12px ${data.borderClr}22` 
+    : `0 8px 30px rgba(15, 23, 42, 0.05), 0 0 12px ${data.borderClr}12`;
+
+  if (data.activeAgentNode) {
+    nodeBoxShadow = '0 0 25px rgba(34, 197, 150, 0.6)';
+  } else if (isDiffAdd) {
+    nodeBoxShadow = '0 0 20px rgba(34, 197, 94, 0.5)';
+  } else if (isDiffDelete) {
+    nodeBoxShadow = '0 0 20px rgba(239, 68, 68, 0.4)';
+  }
+
+  const nodeOpacity = isDiffDelete ? 0.5 : 1;
+
   return (
     <div
       className={`p-3 rounded-xl border-2 w-[240px] text-left transition-all duration-300 select-none ${
@@ -59,13 +81,10 @@ export default function ArchitectureNode({ data, targetPosition, sourcePosition 
         theme === 'dark' ? 'backdrop-blur-md' : 'shadow-md shadow-slate-100'
       }`}
       style={{
-        borderColor: data.activeAgentNode ? '#22c55e' : data.borderClr,
-        boxShadow: data.activeAgentNode 
-          ? '0 0 25px rgba(34, 197, 150, 0.6)' 
-          : (theme === 'dark' 
-              ? `0 4px 20px rgba(0, 0, 0, 0.35), 0 0 12px ${data.borderClr}22` 
-              : `0 8px 30px rgba(15, 23, 42, 0.05), 0 0 12px ${data.borderClr}12`),
+        borderColor: nodeBorderColor,
+        boxShadow: nodeBoxShadow,
         background: bgClr,
+        opacity: nodeOpacity,
       }}
     >
       {/* Target Connection point */}

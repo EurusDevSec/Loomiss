@@ -228,6 +228,7 @@ const initialLayout = getLayoutedElements(formattedMock.nodes, formattedMock.edg
 
 export const useGraphStore = create<GraphState>((set, get) => {
   let ws: WebSocket | null = null;
+  let diffTimeout: any = null;
   
   return {
     nodes: initialLayout.nodes,
@@ -240,9 +241,98 @@ export const useGraphStore = create<GraphState>((set, get) => {
     setTheme: (theme) => set({ theme }),
 
     setElements: (nodes, edges) => {
-      const { direction } = get();
-      const layouted = getLayoutedElements(nodes, edges, direction);
-      set({ nodes: layouted.nodes, edges: layouted.edges });
+      const { direction, nodes: currentNodes, edges: currentEdges } = get();
+      
+      // Chỉ tính toán Diff nếu có đồ thị cũ thực tế (không phải lúc khởi chạy hoặc mock)
+      const isInitialOrMock = currentNodes.length <= 4 && currentNodes.some(n => n.id === 'nginx' && n.parentId === undefined);
+      
+      if (isInitialOrMock || currentNodes.length === 0) {
+        const layouted = getLayoutedElements(nodes, edges, direction);
+        set({ nodes: layouted.nodes, edges: layouted.edges });
+        return;
+      }
+
+      // 1. Phân tách các phần tử bị Xóa hoặc Thêm mới
+      const deletedNodes = currentNodes.filter(cn => cn.type !== 'group' && !nodes.some(n => n.id === cn.id));
+      const addedNodes = nodes.filter(n => n.type !== 'group' && !currentNodes.some(cn => cn.id === n.id));
+      
+      const deletedEdges = currentEdges.filter(ce => !edges.some(e => e.id === ce.id));
+      const addedEdges = edges.filter(e => !currentEdges.some(ce => ce.id === e.id));
+
+      // Nếu không có thay đổi nào về số lượng hay cấu trúc liên kết, chạy thường
+      if (deletedNodes.length === 0 && addedNodes.length === 0 && deletedEdges.length === 0 && addedEdges.length === 0) {
+        const layouted = getLayoutedElements(nodes, edges, direction);
+        set({ nodes: layouted.nodes, edges: layouted.edges });
+        return;
+      }
+
+      // Hủy Timeout dọn dẹp trước đó nếu có để tránh đè hoạt ảnh
+      if (diffTimeout) {
+        clearTimeout(diffTimeout);
+        diffTimeout = null;
+      }
+
+      // 2. Gom nhóm toàn bộ phần tử để Dagre tính toán layout đồng bộ
+      const combinedNodesForLayout = [...nodes];
+      deletedNodes.forEach(dn => {
+        if (!combinedNodesForLayout.some(n => n.id === dn.id)) {
+          combinedNodesForLayout.push(dn);
+        }
+      });
+
+      const combinedEdgesForLayout = [...edges];
+      deletedEdges.forEach(de => {
+        if (!combinedEdgesForLayout.some(e => e.id === de.id)) {
+          combinedEdgesForLayout.push(de);
+        }
+      });
+
+      const layouted = getLayoutedElements(combinedNodesForLayout, combinedEdgesForLayout, direction);
+
+      // 3. Đánh dấu class chuyển tiếp và thuộc tính style cho từng loại node/edge
+      const animatedNodes = layouted.nodes.map(n => {
+        const isAdded = addedNodes.some(added => added.id === n.id);
+        const isDeleted = deletedNodes.some(deleted => deleted.id === n.id);
+
+        if (isAdded) {
+          return {
+            ...n,
+            className: 'animate-diff-add',
+            data: { ...n.data, isDiffAdd: true }
+          };
+        }
+        if (isDeleted) {
+          return {
+            ...n,
+            className: 'animate-diff-delete',
+            data: { ...n.data, isDiffDelete: true }
+          };
+        }
+        return n;
+      });
+
+      const animatedEdges = layouted.edges.map(e => {
+        const isAdded = addedEdges.some(added => added.id === e.id);
+        const isDeleted = deletedEdges.some(deleted => deleted.id === e.id);
+
+        if (isAdded) {
+          return { ...e, className: 'diff-edge-add' };
+        }
+        if (isDeleted) {
+          return { ...e, className: 'diff-edge-delete' };
+        }
+        return e;
+      });
+
+      // Render đồ thị chuyển tiếp
+      set({ nodes: animatedNodes, edges: animatedEdges });
+
+      // 4. Thiết lập Timeout 3 giây dọn dẹp và khôi phục đồ thị mới nguyên bản
+      diffTimeout = setTimeout(() => {
+        const cleanLayouted = getLayoutedElements(nodes, edges, direction);
+        set({ nodes: cleanLayouted.nodes, edges: cleanLayouted.edges });
+        diffTimeout = null;
+      }, 3000);
     },
 
     setDirection: (direction) => {

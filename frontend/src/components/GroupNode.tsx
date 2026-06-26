@@ -48,15 +48,32 @@ export default function GroupNode({ id, data }: GroupNodeProps) {
   const headerBorder = theme === 'dark' ? 'border-zinc-850' : 'border-slate-200';
   const shadowColor = theme === 'dark' ? 'rgba(0, 0, 0, 0.4)' : 'rgba(15, 23, 42, 0.04)';
 
+  const isDiffAdd = (data as any).isDiffAdd;
+  const isDiffDelete = (data as any).isDiffDelete;
+
+  let groupBorderColor = theme === 'dark' ? `${borderClr}25` : `${borderClr}45`;
+  let groupLeftBorderColor = borderClr;
+
+  if (isDiffAdd) {
+    groupBorderColor = theme === 'dark' ? '#22c55e25' : '#22c55e45';
+    groupLeftBorderColor = '#22c55e';
+  } else if (isDiffDelete) {
+    groupBorderColor = theme === 'dark' ? '#ef444425' : '#ef444445';
+    groupLeftBorderColor = '#ef4444';
+  }
+
+  const groupOpacity = isDiffDelete ? 0.5 : 1;
+
   return (
     <div
       className="rounded-3xl border-2 h-full w-full relative transition-all duration-300 pointer-events-none"
       style={{
-        borderColor: theme === 'dark' ? `${borderClr}25` : `${borderClr}45`, // Increased visibility for light theme
-        borderLeftColor: borderClr,
+        borderColor: groupBorderColor, 
+        borderLeftColor: groupLeftBorderColor,
         borderLeftWidth: '6px', // Premium vertical accent sidebar
         background: containerBg,
         boxShadow: `0 20px 40px -10px ${shadowColor}, inset 0 0 24px ${borderClr}08`,
+        opacity: groupOpacity,
       }}
     >
       {/* Decorative vertical grid lines inside the tier */}
