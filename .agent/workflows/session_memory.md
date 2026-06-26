@@ -1,38 +1,35 @@
 # 💾 SESSION MEMORY — Loomiss Project
-> Last Checkpoint: 2026-06-26 | Status: **INITIAL FEASIBILITY EVALUATION & CONTEXT SETUP — 100% COMPLETE**
+> Last Checkpoint: 2026-06-26 | Status: **PHASE 1 (SKELETON & SINGLE BINARY) — 100% COMPLETE & VERIFIED**
 
 ---
 
 ## ⚡ Active Tasks Completed (Những việc ĐÃ HOÀN THÀNH trong session)
 
-### 📋 Kiến trúc & Kế hoạch Tối ưu hóa (Phase 0)
+### 🎨 Khởi tạo Giao diện & Auto Layout (Phase 1 Frontend)
+*   **Vite + React Flow:** Khởi tạo dự án React TS thành công trong thư mục `frontend/`. Cài đặt `@xyflow/react` và các thư viện liên quan.
+*   **Dagre Auto-Layout ([`layout.ts`](file:///r:/_Projects/Eurus_Workspace/Loomiss/frontend/src/utils/layout.ts)):** Cài đặt hàm sắp xếp node tự động dựa trên Dagre, hỗ trợ đổi hướng dọc (TB) / ngang (LR) và an toàn kiểu dữ liệu (Type-safe).
+*   **Tailwind CSS v4 & index.css ([`index.css`](file:///r:/_Projects/Eurus_Workspace/Loomiss/frontend/src/index.css)):** Cấu hình Tailwind v4 dạng `@import` và `@theme` hiện đại, loại bỏ các lỗi tương thích PostCSS. Thiết kế giao diện Dark Mode neon cao cấp và hiệu ứng pulsing edges / ripple.
+*   **Zustand Store ([`useGraphStore.ts`](file:///r:/_Projects/Eurus_Workspace/Loomiss/frontend/src/store/useGraphStore.ts)):** Quản lý toàn bộ trạng thái đồ thị và WebSocket độc lập với UI theo đúng tư duy Pragmatic Clean Architecture.
 
-*   **Đánh giá & Phản biện Kế hoạch ([`evaluation_report.md`](file:///r:/_Projects/Eurus_Workspace/Loomiss/docs/evaluation_report.md)):**
-    *   Phân tích các rủi ro kỹ thuật liên quan đến CGO khi dùng Tree-sitter. Đề xuất chuyển sang các **Pure Go Parsers** (`yaml.v3`, `hcl/v2`, custom nginx parser) để tối ưu cross-compilation.
-    *   Xác định React Flow thiếu layout tự động. Đề xuất tích hợp **Dagre Layout Engine** (`@reactflow/dagre`) ở phía Frontend.
-    *   Đề xuất cơ chế IPC (HTTP REST API nội bộ) để đồng bộ thông tin giữa tiến trình MCP stdio và Daemon chính.
-    *   Xây dựng cơ chế chịu lỗi **LKG (Last Known Good)** để ngăn sập/xóa sơ đồ khi gõ cấu hình bị lỗi cú pháp tạm thời.
-
-*   **Cập nhật Kế hoạch Tổng thể ([`plan.md`](file:///r:/_Projects/Eurus_Workspace/Loomiss/docs/plan.md)):**
-    *   Gộp toàn bộ các đề xuất tối ưu hóa kiến trúc vào tài liệu kế hoạch chính.
-    *   Bổ sung cơ chế **Universal Fallback (File Watcher)** giúp hỗ trợ tất cả các IDE / AI Clients không có MCP (như VSCode + standard GitHub Copilot).
-    *   Bổ sung tiêu chuẩn đầu ra (Definition of Done) yêu cầu kiểm thử trên ít nhất 3 môi trường: **Antigravity IDE**, **Cursor** (qua MCP), và **VSCode/Kiro** (qua File Watcher khi lưu file).
-
-*   **Thiết lập Context Agent mới ([`.agent/`](file:///r:/_Projects/Eurus_Workspace/Loomiss/.agent/)):**
-    *   Tái cấu trúc và sửa đổi toàn bộ các file `.agent/rules/` (`CONTEXT.md`, `PLAN.md`, `ORCHESTRATOR.md`) phù hợp với stack công nghệ của Loomiss (Go, React Flow, WebSockets, MCP, IPC).
+### ⚙️ Backend HTTP Server & go:embed Đóng gói (Phase 1 Backend)
+*   **Go Module & Domain Layer ([`models.go`](file:///r:/_Projects/Eurus_Workspace/Loomiss/backend/domain/models.go) & [`interfaces.go`](file:///r:/_Projects/Eurus_Workspace/Loomiss/backend/domain/interfaces.go)):** Khởi tạo `loomiss` module, thiết lập models và các interface trừu tượng cho SQLite, caching, embedding.
+*   **Static Assets Embedding ([`server.go`](file:///r:/_Projects/Eurus_Workspace/Loomiss/backend/daemon/server.go)):** Nhúng trực tiếp thư mục build `dist/` vào file Go binary thông qua `go:embed`. Khởi chạy HTTP Server trên cổng `18900` và tự động mở trình duyệt tương ứng với hệ điều hành khi start.
+*   **CLI Routing ([`main.go`](file:///r:/_Projects/Eurus_Workspace/Loomiss/backend/main.go)):** Xử lý định tuyến CLI (`loomiss start`, `loomiss mcp`) và mặc định khởi chạy Web server nếu gọi trực tiếp.
+*   **Đóng gói Binary:** Biên dịch chéo thành công ra file binary `loomiss.exe` ở cả thư mục gốc và thư mục `backend/` dạng **pure Go (Zero CGO)**.
 
 ---
 
 ## 🧠 Semantic Context Essence (Tinh túy kiến thức & Quyết định thiết kế)
 
-*   **Không sử dụng CGO**: Đây là tôn chỉ tiên quyết của phần backend nhằm đảm bảo quá trình biên dịch chéo sang Windows, Linux, macOS cực kỳ nhanh gọn thông qua Golang toolchain gốc mà không cần compiler GCC ngoài.
-*   **Universal Fallback bằng File Watcher**: Với các IDE không tích hợp sẵn MCP (như VSCode thông thường chạy Copilot), watcher (`fsnotify`) của daemon chính đóng vai trò phát hiện sự thay đổi khi lưu file để cập nhật sơ đồ. MCP chỉ là kênh bổ sung nhằm cung cấp ngữ cảnh trực tiếp và hành động trước khi lưu.
-*   **Dagre Layout Engine**: Bắt buộc phải tính toán tọa độ node từ trước khi vẽ để tránh hiện tượng các node đè lên nhau tại gốc (0,0).
+*   **Đầu ra của Build Frontend:** `frontend/vite.config.ts` được chỉnh sửa để build trực tiếp vào `../backend/daemon/dist/`, giúp đơn giản hóa việc nhúng tài nguyên bằng Go compiler.
+*   **Position enum của @xyflow/react:** Bắt buộc sử dụng `Position.Left`, `Position.Top` từ thư viện thay vì truyền chuỗi string thường như `'left'`, `'top'` để tránh lỗi biên dịch TypeScript khi bật `verbatimModuleSyntax`.
+*   **Tailwind v4 PostCSS Integration:** Sử dụng plugin `@tailwindcss/postcss` trong `postcss.config.js` thay vì plugin cũ, cấu hình `@import "tailwindcss"` và `@theme` trực tiếp trong tệp tin CSS.
+*   **Log redirection của MCP:** Ghi nhớ ở các phase sau khi code MCP, mọi stdout của tiến trình `mcp` chỉ được ghi dữ liệu JSON-RPC. Mọi log debug phải chuyển hướng ra `stderr`.
 
 ---
 
 ## 🔜 Next Steps (3 hành động kỹ thuật trực tiếp kế tiếp)
 
-- [ ] **Step 1:** Khởi tạo project frontend Vite + React trong thư mục `frontend` của dự án, cài đặt React Flow, Dagre layout và Tailwind CSS.
-- [ ] **Step 2:** Khởi tạo dự án Go trong thư mục `backend`, thiết lập HTTP Server cơ bản và cấu hình `go:embed` trỏ tới thư mục build static `dist/` của frontend.
-- [ ] **Step 3:** Tiến hành biên dịch thử nghiệm single binary của Go trên môi trường Windows local và xác thực giao thức mở trình duyệt tự động khi khởi chạy.
+- [ ] **Step 1 (Phase 2):** Khởi tạo package `parsers` trong `backend/parsers/` và viết trình phân tích cú pháp `compose.go` đọc tệp `docker-compose.yml` sử dụng thư viện `yaml.v3`.
+- [ ] **Step 2 (Phase 2):** Viết trình phân tích cú pháp `terraform.go` đọc các file `.tf` sử dụng `hcl/v2`.
+- [ ] **Step 3 (Phase 2):** Viết custom parser hoặc lexer đơn giản `nginx.go` phân tích các block và chỉ thị `proxy_pass` của Nginx.
