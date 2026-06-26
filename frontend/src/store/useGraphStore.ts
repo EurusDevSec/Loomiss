@@ -11,6 +11,8 @@ interface GraphState {
   websocketStatus: 'connecting' | 'connected' | 'disconnected';
   
   theme: 'light' | 'dark';
+  selectedNodeId: string | null;
+  metricsHistory: Record<string, { cpu: number[]; ram: number[]; network: number[] }>;
   
   // Actions
   setElements: (nodes: Node[], edges: Edge[]) => void;
@@ -20,6 +22,7 @@ interface GraphState {
   connectWebSocket: (url?: string) => void;
   fetchGraph: () => Promise<void>;
   setTheme: (theme: 'light' | 'dark') => void;
+  setSelectedNodeId: (id: string | null) => void;
 }
 
 // Hỗ trợ map ID, nhãn (label) và hình ảnh sang slug logo tương ứng của Simple Icons
@@ -297,7 +300,10 @@ export const useGraphStore = create<GraphState>((set, get) => {
     activeAgentNode: null,
     theme: 'light',
     websocketStatus: 'disconnected',
+    selectedNodeId: null,
+    metricsHistory: {},
     setTheme: (theme) => set({ theme }),
+    setSelectedNodeId: (id) => set({ selectedNodeId: id }),
 
     setElements: (nodes, edges) => {
       const { direction, nodes: currentNodes, edges: currentEdges } = get();
@@ -494,6 +500,28 @@ export const useGraphStore = create<GraphState>((set, get) => {
               case 'METRICS_UPDATE': {
                 const metrics = data.metrics as Record<string, { cpu: number; ram: number; network: number }>;
                 set((state) => {
+                  const newHistory = { ...state.metricsHistory };
+                  
+                  Object.keys(metrics).forEach(nodeId => {
+                    if (!newHistory[nodeId]) {
+                      newHistory[nodeId] = { cpu: [], ram: [], network: [] };
+                    }
+                    
+                    const cpuHistory = [...newHistory[nodeId].cpu, metrics[nodeId].cpu];
+                    const ramHistory = [...newHistory[nodeId].ram, metrics[nodeId].ram];
+                    const networkHistory = [...newHistory[nodeId].network, metrics[nodeId].network];
+                    
+                    if (cpuHistory.length > 20) cpuHistory.shift();
+                    if (ramHistory.length > 20) ramHistory.shift();
+                    if (networkHistory.length > 20) networkHistory.shift();
+                    
+                    newHistory[nodeId] = {
+                      cpu: cpuHistory,
+                      ram: ramHistory,
+                      network: networkHistory
+                    };
+                  });
+
                   const updatedNodes = state.nodes.map(node => {
                     if (metrics[node.id]) {
                       return {
@@ -521,7 +549,11 @@ export const useGraphStore = create<GraphState>((set, get) => {
                     };
                   });
 
-                  return { nodes: updatedNodes, edges: updatedEdges };
+                  return { 
+                    nodes: updatedNodes, 
+                    edges: updatedEdges,
+                    metricsHistory: newHistory
+                  };
                 });
                 break;
               }

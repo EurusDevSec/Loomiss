@@ -6,6 +6,7 @@ import { Activity, Radio, AlertTriangle, Play, RefreshCw, Sun, Moon } from 'luci
 import ArchitectureNode from './components/ArchitectureNode';
 import GroupNode from './components/GroupNode';
 import TrafficEdge from './components/TrafficEdge';
+import DetailDrawer from './components/DetailDrawer';
 
 const nodeTypes = {
   architectureNode: ArchitectureNode,
@@ -29,6 +30,7 @@ export default function App() {
     setActiveAgentNode,
     fetchGraph,
     setTheme,
+    setSelectedNodeId,
   } = useGraphStore();
 
   // Khởi động kết nối WebSocket và tải sơ đồ thực tế khi Component Mount
@@ -105,6 +107,8 @@ export default function App() {
             edges={edges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
+            onNodeClick={(_event, node) => setSelectedNodeId(node.id)}
+            onPaneClick={() => setSelectedNodeId(null)}
             fitView
             minZoom={0.3}
             maxZoom={1.5}
@@ -236,6 +240,9 @@ export default function App() {
             </ul>
           </div>
         </aside>
+        
+        {/* Node detail sliding drawer */}
+        <DetailDrawer />
       </div>
     </div>
   );
