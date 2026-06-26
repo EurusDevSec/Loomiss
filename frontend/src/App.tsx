@@ -14,12 +14,14 @@ export default function App() {
     setDirection,
     connectWebSocket,
     setActiveAgentNode,
+    fetchGraph,
   } = useGraphStore();
 
-  // Khởi động kết nối WebSocket khi Component Mount
+  // Khởi động kết nối WebSocket và tải sơ đồ thực tế khi Component Mount
   useEffect(() => {
+    fetchGraph();
     connectWebSocket();
-  }, [connectWebSocket]);
+  }, [fetchGraph, connectWebSocket]);
 
   // Hàm mô phỏng kích hoạt hiệu ứng AI Agent đang sửa database
   const triggerSimulation = () => {

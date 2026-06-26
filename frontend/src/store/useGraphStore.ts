@@ -16,7 +16,65 @@ interface GraphState {
   setError: (err: string | null) => void;
   setActiveAgentNode: (nodeId: string | null) => void;
   connectWebSocket: (url?: string) => void;
+  fetchGraph: () => Promise<void>;
 }
+
+// Hàm chuẩn hóa dữ liệu đồ thị thô từ Backend thành các styled Nodes/Edges của React Flow
+const formatGraphData = (rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edges: Edge[] } => {
+  const formattedNodes: Node[] = rawNodes.map((node) => {
+    const isNginx = node.id === 'nginx' || node.type === 'gateway';
+    const isApp = node.type === 'app';
+    const borderClr = isNginx ? '#06b6d4' : isApp ? '#a855f7' : '#f59e0b';
+    const shadowClr = isNginx ? 'rgba(6, 182, 212, 0.3)' : isApp ? 'rgba(168, 85, 247, 0.3)' : 'rgba(245, 158, 11, 0.3)';
+    
+    // Thêm icon tùy thuộc vào loại node
+    let label = node.label || node.id;
+    if (!label.includes('🌐') && !label.includes('⚙️') && !label.includes('🐳') && !label.includes('🗄️') && !label.includes('☁️')) {
+      if (isNginx) label = '🌐 ' + label;
+      else if (isApp) label = '⚙️ ' + label;
+      else label = '🗄️ ' + label;
+    }
+
+    // Gắn thêm nhãn cổng nếu có trong metadata
+    const ports = node.metadata?.ports;
+    const displayLabel = ports ? `${label} (${ports})` : label;
+
+    return {
+      id: node.id,
+      type: 'default',
+      data: { label: displayLabel },
+      position: { x: 0, y: 0 },
+      style: {
+        background: 'rgba(9, 9, 11, 0.8)',
+        color: '#e4e4e7',
+        border: `2px solid ${borderClr}`,
+        borderRadius: '8px',
+        padding: '10px',
+        boxShadow: `0 0 15px ${shadowClr}`,
+        fontWeight: 'bold',
+        width: 220,
+      },
+    };
+  });
+
+  const formattedEdges: Edge[] = rawEdges.map((edge) => {
+    const isNginx = edge.source === 'nginx';
+    const strokeClr = isNginx ? '#06b6d4' : '#a855f7';
+    
+    return {
+      id: edge.id || `${edge.source}-${edge.target}`,
+      source: edge.source,
+      target: edge.target,
+      label: edge.label || '',
+      animated: true,
+      style: { stroke: strokeClr, strokeWidth: 2 },
+      labelStyle: { fill: '#a1a1aa', fontSize: 10, fontWeight: 'bold' },
+      labelBgStyle: { fill: '#18181b', fillOpacity: 0.8 },
+    };
+  });
+
+  return { nodes: formattedNodes, edges: formattedEdges };
+};
 
 // Dữ liệu mock ban đầu cho DoD của Phase 1
 const mockNodes: Node[] = [
@@ -137,8 +195,8 @@ export const useGraphStore = create<GraphState>((set, get) => {
           };
         } else {
           // Khôi phục viền gốc dựa trên loại node
-          const isNginx = node.id === 'nginx';
-          const isApp = node.id === 'app' || node.id.includes('app') || node.id.includes('service');
+          const isNginx = node.id === 'nginx' || node.id.includes('nginx');
+          const isApp = node.id === 'app' || node.id.includes('app') || node.id.includes('service') || node.id.includes('aws_instance') || node.id.includes('web');
           const borderClr = isNginx ? '#06b6d4' : isApp ? '#a855f7' : '#f59e0b';
           const shadowClr = isNginx ? 'rgba(6, 182, 212, 0.3)' : isApp ? 'rgba(168, 85, 247, 0.3)' : 'rgba(245, 158, 11, 0.3)';
           
@@ -154,6 +212,21 @@ export const useGraphStore = create<GraphState>((set, get) => {
         }
       });
       set({ activeAgentNode: nodeId, nodes: updatedNodes });
+    },
+
+    fetchGraph: async () => {
+      try {
+        const response = await fetch('/api/graph');
+        if (!response.ok) throw new Error('Không thể tải dữ liệu từ daemon server');
+        const data = await response.json();
+        
+        if (data.nodes && data.nodes.length > 0) {
+          const { nodes, edges } = formatGraphData(data.nodes, data.edges || []);
+          get().setElements(nodes, edges);
+        }
+      } catch (err) {
+        console.warn('[Loomiss] Không có kết nối tới API Daemon, sử dụng Mock Graph fallback:', err);
+      }
     },
 
     connectWebSocket: (url) => {
@@ -179,7 +252,10 @@ export const useGraphStore = create<GraphState>((set, get) => {
             switch (data.type) {
               case 'UPDATE_GRAPH':
                 set({ error: null });
-                get().setElements(data.nodes || [], data.edges || []);
+                if (data.nodes) {
+                  const { nodes, edges } = formatGraphData(data.nodes, data.edges || []);
+                  get().setElements(nodes, edges);
+                }
                 break;
               case 'PARSE_ERROR':
                 set({ error: data.message });

@@ -2,8 +2,10 @@ package daemon
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io/fs"
+	"loomiss/usecase"
 	"net/http"
 	"os/exec"
 	"runtime"
@@ -26,6 +28,20 @@ func StartServer(port int) error {
 	// Server file tĩnh
 	fileServer := http.FileServer(http.FS(subFS))
 	mux.Handle("/", fileServer)
+
+	// API trả về đồ thị phân tích thực tế của thư mục hiện tại
+	mux.HandleFunc("/api/graph", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		
+		graph, err := usecase.CompileGraph(".")
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		
+		json.NewEncoder(w).Encode(graph)
+	})
 
 	// Route cho WebSocket (sẽ triển khai hoàn chỉnh ở Phase 3)
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
