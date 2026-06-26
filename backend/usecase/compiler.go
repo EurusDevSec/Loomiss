@@ -70,17 +70,19 @@ func CompileGraph(workspacePath string) (*domain.GraphSchema, error) {
 		}
 	}
 
-	// Quét đệ quy thư mục
-	err := filepath.Walk(workspacePath, func(path string, info os.FileInfo, err error) error {
+	cleanWorkspacePath := filepath.Clean(workspacePath)
+	err := filepath.Walk(cleanWorkspacePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // Tiếp tục quét kể cả khi lỗi đọc một file
 		}
 
 		if info.IsDir() {
-			name := info.Name()
-			// Bỏ qua các thư mục hệ thống / phụ trợ lớn để tối ưu hóa
-			if strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin" {
-				return filepath.SkipDir
+			if filepath.Clean(path) != cleanWorkspacePath {
+				name := info.Name()
+				// Bỏ qua các thư mục hệ thống / phụ trợ lớn để tối ưu hóa
+				if strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin" {
+					return filepath.SkipDir
+				}
 			}
 
 			// Quét các tệp Terraform trong thư mục này

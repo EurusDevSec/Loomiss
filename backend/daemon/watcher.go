@@ -18,15 +18,18 @@ func StartWatcher(workspacePath string, hub *Hub) error {
 		return fmt.Errorf("failed to create fsnotify watcher: %w", err)
 	}
 
+	cleanWorkspacePath := filepath.Clean(workspacePath)
 	// Đệ quy thêm tất cả các thư mục con vào watcher (loại trừ các thư mục không cần thiết)
-	err = filepath.Walk(workspacePath, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(cleanWorkspacePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
 		if info.IsDir() {
-			name := info.Name()
-			if strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin" {
-				return filepath.SkipDir
+			if filepath.Clean(path) != cleanWorkspacePath {
+				name := info.Name()
+				if strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin" {
+					return filepath.SkipDir
+				}
 			}
 			err = watcher.Add(path)
 			if err != nil {
