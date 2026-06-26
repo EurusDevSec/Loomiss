@@ -69,6 +69,40 @@ const getLogoSlug = (nodeId: string, type: string, image?: string, metadata?: an
 // Hàm chuẩn hóa dữ liệu đồ thị thô từ Backend thành các styled Nodes/Edges của React Flow
 const formatGraphData = (rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edges: Edge[] } => {
   const formattedNodes: Node[] = rawNodes.map((node) => {
+    if (node.type === 'group') {
+      const idLower = node.id.toLowerCase();
+      let borderClr = '#27272a';
+      let bgClr = 'rgba(39, 39, 42, 0.03)';
+      
+      if (idLower.includes('docker')) {
+        borderClr = '#06b6d4';
+        bgClr = 'rgba(6, 182, 212, 0.03)';
+      } else if (idLower.includes('terraform')) {
+        borderClr = '#3b82f6';
+        bgClr = 'rgba(59, 130, 246, 0.03)';
+      } else if (idLower.includes('gateway')) {
+        borderClr = '#14b8a6'; // teal
+        bgClr = 'rgba(20, 184, 166, 0.03)';
+      } else if (idLower.includes('app') || idLower.includes('workspace')) {
+        borderClr = '#a855f7';
+        bgClr = 'rgba(168, 85, 247, 0.03)';
+      } else if (idLower.includes('devops') || idLower.includes('monitoring')) {
+        borderClr = '#10b981'; // emerald
+        bgClr = 'rgba(16, 185, 129, 0.03)';
+      }
+
+      return {
+        id: node.id,
+        type: 'group',
+        data: {
+          label: node.label || node.id,
+          borderClr,
+          bgClr,
+        },
+        position: { x: 0, y: 0 },
+      };
+    }
+
     const isNginx = node.id === 'nginx' || node.type === 'gateway' || node.id.includes('nginx') || node.id.includes('gateway');
     const isApp = node.type === 'app';
     const borderClr = isNginx ? '#06b6d4' : isApp ? '#a855f7' : '#f59e0b';
@@ -84,6 +118,7 @@ const formatGraphData = (rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edg
     return {
       id: node.id,
       type: 'architectureNode',
+      parentId: node.parentId,
       data: {
         label: cleanLabel,
         type: node.type,

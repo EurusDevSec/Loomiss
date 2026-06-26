@@ -4,9 +4,11 @@ import '@xyflow/react/dist/style.css';
 import { useGraphStore } from './store/useGraphStore';
 import { Activity, Radio, AlertTriangle, Play, RefreshCw } from 'lucide-react';
 import ArchitectureNode from './components/ArchitectureNode';
+import GroupNode from './components/GroupNode';
 
 const nodeTypes = {
   architectureNode: ArchitectureNode,
+  group: GroupNode,
 };
 
 export default function App() {

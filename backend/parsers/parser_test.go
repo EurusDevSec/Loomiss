@@ -48,9 +48,9 @@ services:
 		t.Fatalf("ParseDockerCompose failed: %v", err)
 	}
 
-	// Kiểm định Nodes
-	if len(nodes) != 3 {
-		t.Errorf("expected 3 nodes, got %d", len(nodes))
+	// Kiểm định Nodes (3 nodes thực tế + 1 node group)
+	if len(nodes) != 4 {
+		t.Errorf("expected 4 nodes, got %d", len(nodes))
 	}
 
 	nodeMap := make(map[string]string)
@@ -113,8 +113,8 @@ server {
 		t.Fatalf("ParseNginxConfig failed: %v", err)
 	}
 
-	if len(nodes) != 1 {
-		t.Errorf("expected 1 node, got %d", len(nodes))
+	if len(nodes) != 2 {
+		t.Errorf("expected 2 nodes, got %d", len(nodes))
 	}
 	if nodes[0].ID != "nginx" {
 		t.Errorf("expected node ID to be nginx, got %s", nodes[0].ID)
@@ -160,8 +160,8 @@ resource "aws_db_instance" "mysql_db" {
 		t.Fatalf("ParseTerraformDirectory failed: %v", err)
 	}
 
-	if len(nodes) != 2 {
-		t.Errorf("expected 2 nodes, got %d", len(nodes))
+	if len(nodes) != 3 {
+		t.Errorf("expected 3 nodes, got %d", len(nodes))
 	}
 
 	nodeMap := make(map[string]string)
@@ -251,9 +251,9 @@ REDIS_URL=redis://localhost:6379
 		t.Fatalf("AppLevelParser Parse failed: %v", err)
 	}
 
-	// We expect 4 nodes: my-frontend, my-frontend-postgres, my-backend, my-backend-redis
-	if len(nodes) != 4 {
-		t.Errorf("expected 4 nodes, got %d", len(nodes))
+	// We expect 5 nodes: my-frontend, my-frontend-postgres, my-backend, my-backend-redis + 1 group node
+	if len(nodes) != 5 {
+		t.Errorf("expected 5 nodes, got %d", len(nodes))
 	}
 
 	nodeMap := make(map[string]domain.Node)
