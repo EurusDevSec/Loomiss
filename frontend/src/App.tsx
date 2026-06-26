@@ -1,8 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ReactFlow, Background, Controls } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useGraphStore } from './store/useGraphStore';
-import { Activity, Radio, AlertTriangle, Play, RefreshCw, Sun, Moon } from 'lucide-react';
+import { Activity, Radio, AlertTriangle, Play, RefreshCw, Sun, Moon, Brain, Send, ShieldAlert, X } from 'lucide-react';
 import ArchitectureNode from './components/ArchitectureNode';
 import GroupNode from './components/GroupNode';
 import TrafficEdge from './components/TrafficEdge';
@@ -32,7 +32,14 @@ export default function App() {
     setTheme,
     setSelectedNodeId,
     codeChanges,
+    geminiApiKey,
+    setGeminiApiKey,
   } = useGraphStore();
+
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [auditHistory, setAuditHistory] = useState<{ role: 'user' | 'model'; text: string }[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditInput, setAuditInput] = useState('');
 
   // Khởi động kết nối WebSocket và tải sơ đồ thực tế khi Component Mount
   useEffect(() => {
@@ -46,6 +53,165 @@ export default function App() {
     setTimeout(() => {
       setActiveAgentNode(null);
     }, 4000);
+  };
+
+  const buildArchitectureSummary = () => {
+    const nodesSummary = nodes.map(n => ({
+      id: n.id,
+      label: n.data?.label || n.id,
+      type: n.data?.type || 'unknown',
+      parentId: n.parentId || 'none',
+      image: (n.data as any)?.metadata?.image || 'unknown',
+      ports: (n.data as any)?.metadata?.ports || 'none',
+    }));
+
+    const edgesSummary = edges.map(e => ({
+      source: e.source,
+      target: e.target,
+      label: e.label || 'connects to',
+    }));
+
+    return JSON.stringify({ nodes: nodesSummary, connections: edgesSummary }, null, 2);
+  };
+
+  const runGlobalAudit = async (customPrompt?: string) => {
+    if (!geminiApiKey) return;
+    setIsAuditModalOpen(true);
+    setAuditLoading(true);
+
+    const question = customPrompt || "Perform a comprehensive security and design patterns audit on the current architecture.";
+    const newUserMsg = { role: 'user' as const, text: question };
+    const updatedHistory = [...auditHistory, newUserMsg];
+    setAuditHistory(updatedHistory);
+    setAuditInput('');
+
+    try {
+      const archSummary = buildArchitectureSummary();
+      const systemInstructions = `You are the Loomiss AI Architect, a senior software architect, infrastructure developer, and cybersecurity auditor.
+Analyze the system architecture representation (nodes and connection edges) provided.
+Verify for security issues, such as:
+1. Database exposed directly on host ports without a private network subnet.
+2. Insecure routing, reverse proxies (e.g. Nginx proxy_pass), or lack of TLS configuration.
+3. Over-privileged configurations or containers.
+4. General architectural recommendations (redundancy, scaling, bottlenecks).
+
+Return a highly professional, well-structured markdown audit report. Be thorough. Present findings clearly using lists, bold text, and subheaders. Use emojis (⚠️, ✅, 🛡️) to make it visually engaging and readable.`;
+
+      const promptContext = `
+Current Architecture Topology JSON:
+\`\`\`json
+${archSummary}
+\`\`\`
+
+User prompt / query:
+"${question}"
+`;
+
+      const contents = [];
+      if (updatedHistory.length === 1) {
+        contents.push({
+          role: 'user',
+          parts: [{ text: `${systemInstructions}\n\nHere is the architecture data:\n${promptContext}` }]
+        });
+      } else {
+        updatedHistory.forEach((msg, idx) => {
+          let textVal = msg.text;
+          if (idx === 0) {
+            textVal = `${systemInstructions}\n\nHere is the architecture data:\n${promptContext}`;
+          }
+          contents.push({
+            role: msg.role === 'user' ? 'user' : 'model',
+            parts: [{ text: textVal }]
+          });
+        });
+      }
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ contents }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`API call failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      const modelText = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response returned from Gemini.';
+      setAuditHistory(prev => [...prev, { role: 'model', text: modelText }]);
+    } catch (err: any) {
+      console.error('Global Audit failed:', err);
+      setAuditHistory(prev => [
+        ...prev,
+        { role: 'model', text: `⚠️ **Audit Error**: Failed to query Gemini. ${err.message}` }
+      ]);
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  const formatMarkdown = (text: string) => {
+    const lines = text.split('\n');
+    const renderedElements: React.ReactNode[] = [];
+    let inCodeBlock = false;
+    let codeBlockLines: string[] = [];
+
+    lines.forEach((line, index) => {
+      if (line.trim().startsWith('```')) {
+        if (inCodeBlock) {
+          renderedElements.push(
+            <pre key={`code-${index}`} className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800/80 font-mono text-[9px] text-zinc-300 overflow-x-auto my-1.5 select-text">
+              <code>{codeBlockLines.join('\n')}</code>
+            </pre>
+          );
+          codeBlockLines = [];
+          inCodeBlock = false;
+        } else {
+          inCodeBlock = true;
+        }
+        return;
+      }
+
+      if (inCodeBlock) {
+        codeBlockLines.push(line);
+        return;
+      }
+
+      const processInline = (str: string): React.ReactNode[] => {
+        const parts = str.split(/(\*\*.*?\*\*|`.*?`)/g);
+        return parts.map((part, pIdx) => {
+          if (part.startsWith('**') && part.endsWith('**')) {
+            return <strong key={pIdx} className="font-bold text-zinc-100 dark:text-white">{part.slice(2, -2)}</strong>;
+          }
+          if (part.startsWith('`') && part.endsWith('`')) {
+            return <code key={pIdx} className="px-1.5 py-0.5 rounded bg-zinc-900 font-mono text-[9px] border border-zinc-800 text-purple-300">{part.slice(1, -1)}</code>;
+          }
+          return part;
+        });
+      };
+
+      if (line.trim().startsWith('* ') || line.trim().startsWith('- ')) {
+        const content = line.trim().substring(2);
+        renderedElements.push(
+          <li key={index} className="list-disc list-inside ml-2 my-0.5 leading-relaxed">
+            {processInline(content)}
+          </li>
+        );
+      } else if (line.trim()) {
+        renderedElements.push(
+          <p key={index} className="my-1.5 leading-relaxed">
+            {processInline(line)}
+          </p>
+        );
+      }
+    });
+
+    return <div className="space-y-0.5">{renderedElements}</div>;
   };
 
   return (
@@ -213,6 +379,70 @@ export default function App() {
             </button>
           </div>
 
+          {/* AI Architect Copilot */}
+          <div className="flex flex-col space-y-2">
+            <label className={`text-xs font-mono ${theme === 'dark' ? 'text-zinc-500' : 'text-slate-500'}`}>AI Architect Copilot</label>
+            {!geminiApiKey ? (
+              <div className={`p-2.5 rounded-lg border text-center space-y-2 ${
+                theme === 'dark' ? 'bg-zinc-950/40 border-zinc-900' : 'bg-slate-50 border-slate-200'
+              }`}>
+                <p className={`text-[10px] leading-relaxed ${theme === 'dark' ? 'text-zinc-500' : 'text-slate-500'}`}>
+                  Enter Gemini API key to enable global security & design audits.
+                </p>
+                <div className="flex space-x-1.5">
+                  <input
+                    type="password"
+                    placeholder="Gemini API Key..."
+                    id="sidebar-gemini-key"
+                    className={`flex-1 px-2.5 py-1 text-[10px] font-mono border rounded focus:outline-none focus:ring-1 focus:ring-purple-400 transition-all ${
+                      theme === 'dark' ? 'bg-zinc-950 border-zinc-800 text-zinc-100' : 'bg-white border-slate-200 text-slate-900'
+                    }`}
+                  />
+                  <button
+                    onClick={() => {
+                      const input = document.getElementById('sidebar-gemini-key') as HTMLInputElement;
+                      if (input && input.value.trim()) {
+                        setGeminiApiKey(input.value.trim());
+                      }
+                    }}
+                    className="px-2.5 py-1 text-[10px] font-bold text-white bg-purple-600 hover:bg-purple-700 rounded transition-all cursor-pointer"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => runGlobalAudit()}
+                  className={`flex-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-md ${
+                    theme === 'dark'
+                      ? 'bg-gradient-to-r from-purple-900/40 to-cyan-900/40 hover:from-purple-800/50 hover:to-cyan-800/50 border border-purple-700/40 text-purple-200'
+                      : 'bg-gradient-to-r from-purple-50 to-cyan-50 hover:from-purple-100/85 hover:to-cyan-100/85 border border-purple-300 text-purple-700 shadow-purple-500/5'
+                  }`}
+                >
+                  <Brain className="h-3.5 w-3.5 text-purple-400 animate-pulse" />
+                  <span>Run AI Audit</span>
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm("Clear Gemini API Key?")) {
+                      setGeminiApiKey(null);
+                    }
+                  }}
+                  className={`px-2 border rounded-lg transition-all ${
+                    theme === 'dark' 
+                      ? 'bg-zinc-900 border-zinc-800 text-red-400 hover:bg-red-950/20' 
+                      : 'bg-white border-slate-200 text-red-500 hover:bg-red-50 hover:border-red-200'
+                  }`}
+                  title="Clear API Key"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Banner Hiển thị Lỗi (LKG Mode indicator) */}
           {error && (
             <div className="bg-red-950/30 border border-red-800/50 p-3 rounded-lg flex items-start space-x-3 text-red-300 animate-pulse-slow">
@@ -287,6 +517,117 @@ export default function App() {
         {/* Node detail sliding drawer */}
         <DetailDrawer />
       </div>
+
+      {/* Global AI Audit Overlay Modal */}
+      {isAuditModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm select-none">
+          <div className={`w-full max-w-2xl h-[80vh] border rounded-2xl flex flex-col overflow-hidden shadow-2xl transition-all ${
+            theme === 'dark'
+              ? 'bg-zinc-950/95 border-zinc-900 text-zinc-100'
+              : 'bg-white/95 border-slate-200 text-slate-900'
+          }`}>
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800/80 shrink-0">
+              <div className="flex items-center space-x-2.5">
+                <ShieldAlert className="h-5 w-5 text-purple-400" />
+                <div>
+                  <h3 className="text-sm font-bold font-mono">Loomiss AI Architect Audit</h3>
+                  <p className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-slate-500'}`}>Global Security & System Design Audit Report</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsAuditModalOpen(false)}
+                className={`p-1.5 border rounded-lg transition-all ${
+                  theme === 'dark'
+                    ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    : 'bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Conversation / Report Stream */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin select-text">
+              {auditHistory.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className={`flex flex-col space-y-1.5 ${
+                    msg.role === 'user' ? 'items-end' : 'items-start'
+                  }`}
+                >
+                  <span className={`text-[8px] font-mono font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-550' : 'text-slate-400'}`}>
+                    {msg.role === 'user' ? 'You' : 'AI Architect Advisor'}
+                  </span>
+                  <div
+                    className={`p-4 rounded-2xl max-w-[90%] text-xs border leading-relaxed ${
+                      msg.role === 'user'
+                        ? (theme === 'dark' ? 'bg-zinc-900 border-zinc-800 text-zinc-200' : 'bg-slate-100 border-slate-200 text-slate-800')
+                        : (theme === 'dark' ? 'bg-purple-950/15 border-purple-900/25 text-zinc-150' : 'bg-purple-50/40 border-purple-100 text-slate-850')
+                    }`}
+                  >
+                    {msg.role === 'user' ? (
+                      <p className="whitespace-pre-wrap select-text text-[11px] font-sans">{msg.text}</p>
+                    ) : (
+                      formatMarkdown(msg.text)
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {auditLoading && (
+                <div className="flex flex-col items-start space-y-1.5">
+                  <span className={`text-[8px] font-mono font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-600' : 'text-slate-400'}`}>
+                    AI Architect Advisor
+                  </span>
+                  <div className={`p-4 rounded-2xl border flex items-center space-x-2 ${
+                    theme === 'dark' ? 'bg-purple-950/15 border-purple-900/25 text-zinc-100' : 'bg-purple-50/40 border-purple-100 text-slate-850'
+                  }`}>
+                    <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Input Footer */}
+            <div className="p-4 border-t border-zinc-200 dark:border-zinc-800/80 flex items-center space-x-2 shrink-0 select-none">
+              <input
+                type="text"
+                placeholder="Ask the AI Architect about design modifications, scaling, or vulnerabilities..."
+                value={auditInput}
+                onChange={(e) => setAuditInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && auditInput.trim() && !auditLoading) {
+                    runGlobalAudit(auditInput.trim());
+                  }
+                }}
+                className={`flex-1 px-3 py-2 text-xs font-sans border rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-400 transition-all ${
+                  theme === 'dark'
+                    ? 'bg-zinc-950 border-zinc-900 text-zinc-100'
+                    : 'bg-slate-50 border-slate-200 text-slate-900'
+                }`}
+              />
+              <button
+                onClick={() => {
+                  if (auditInput.trim() && !auditLoading) {
+                    runGlobalAudit(auditInput.trim());
+                  }
+                }}
+                disabled={!auditInput.trim() || auditLoading}
+                className={`p-2 border rounded-lg transition-all ${
+                  auditInput.trim() && !auditLoading
+                    ? 'bg-purple-500 hover:bg-purple-600 border-purple-400 text-white cursor-pointer shadow-sm shadow-purple-500/10'
+                    : (theme === 'dark' ? 'bg-zinc-900 border-zinc-800 text-zinc-600' : 'bg-slate-100 border-slate-200 text-slate-300')
+                }`}
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

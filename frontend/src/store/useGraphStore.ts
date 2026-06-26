@@ -14,6 +14,7 @@ interface GraphState {
   selectedNodeId: string | null;
   metricsHistory: Record<string, { cpu: number[]; ram: number[]; network: number[] }>;
   codeChanges: { path: string; status: string; additions: number; deletions: number; }[];
+  geminiApiKey: string | null;
   
   // Actions
   setElements: (nodes: Node[], edges: Edge[]) => void;
@@ -24,6 +25,7 @@ interface GraphState {
   fetchGraph: () => Promise<void>;
   setTheme: (theme: 'light' | 'dark') => void;
   setSelectedNodeId: (id: string | null) => void;
+  setGeminiApiKey: (key: string | null) => void;
 }
 
 // Hỗ trợ map ID, nhãn (label) và hình ảnh sang slug logo tương ứng của Simple Icons
@@ -308,8 +310,17 @@ export const useGraphStore = create<GraphState>((set, get) => {
     selectedNodeId: null,
     metricsHistory: {},
     codeChanges: [],
+    geminiApiKey: localStorage.getItem('loomiss_gemini_api_key') || null,
     setTheme: (theme) => set({ theme }),
     setSelectedNodeId: (id) => set({ selectedNodeId: id }),
+    setGeminiApiKey: (key) => {
+      if (key) {
+        localStorage.setItem('loomiss_gemini_api_key', key);
+      } else {
+        localStorage.removeItem('loomiss_gemini_api_key');
+      }
+      set({ geminiApiKey: key });
+    },
 
     setElements: (nodes, edges) => {
       const { direction, nodes: currentNodes, edges: currentEdges } = get();
