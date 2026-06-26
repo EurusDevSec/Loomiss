@@ -287,18 +287,13 @@ func parseComposerJSON(path, dir, folderName, envPath string) ([]domain.Node, []
 	label := "🐘 PHP Backend"
 	nodeType := "app"
 
-	isDep := func(name string) bool {
-		if comp.Require == nil {
-			return false
+	if comp.Require != nil {
+		for req := range comp.Require {
+			if tech := DetectTechnology(req); tech != nil {
+				label = fmt.Sprintf("%s %s %s", tech.Emoji, tech.Name, GetReadableType(tech.Type))
+				break
+			}
 		}
-		_, ok := comp.Require[name]
-		return ok
-	}
-
-	if isDep("laravel/framework") {
-		label = "🐘 Laravel Backend"
-	} else if isDep("symfony/symfony") || isDep("symfony/http-kernel") {
-		label = "🎼 Symfony Backend"
 	}
 
 	id := comp.Name
@@ -362,24 +357,22 @@ func parsePackageJSON(path, dir, folderName, envPath string) ([]domain.Node, []d
 	label := "📦 Node.js App"
 	nodeType := "app"
 
-	isDep := func(name string) bool {
-		_, ok1 := pkg.Dependencies[name]
-		_, ok2 := pkg.DevDependencies[name]
-		return ok1 || ok2
+	foundTech := false
+	for dep := range pkg.Dependencies {
+		if tech := DetectTechnology(dep); tech != nil {
+			label = fmt.Sprintf("%s %s %s", tech.Emoji, tech.Name, GetReadableType(tech.Type))
+			foundTech = true
+			break
+		}
 	}
-
-	if isDep("next") {
-		label = "⚡ Next.js Frontend"
-	} else if isDep("react") {
-		label = "⚛️ React Frontend"
-	} else if isDep("vue") {
-		label = "💚 Vue Frontend"
-	} else if isDep("svelte") {
-		label = "🧡 Svelte Frontend"
-	} else if isDep("express") {
-		label = "🟢 Express Backend"
-	} else if isDep("nest") {
-		label = "🔴 NestJS Backend"
+	if !foundTech {
+		for dep := range pkg.DevDependencies {
+			if tech := DetectTechnology(dep); tech != nil {
+				label = fmt.Sprintf("%s %s %s", tech.Emoji, tech.Name, GetReadableType(tech.Type))
+				foundTech = true
+				break
+			}
+		}
 	}
 
 	id := pkg.Name

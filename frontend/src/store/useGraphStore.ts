@@ -22,68 +22,126 @@ interface GraphState {
   setTheme: (theme: 'light' | 'dark') => void;
 }
 
-// Hỗ trợ map ID, nhãn (label) và hình ảnh sang slug logo tương ứng của thesvg.org
+// Hỗ trợ map ID, nhãn (label) và hình ảnh sang slug logo tương ứng của Simple Icons
 const getLogoSlug = (nodeId: string, type: string, label: string, image?: string, metadata?: any): string | null => {
-  const idLower = nodeId.toLowerCase();
-  const labelLower = label.toLowerCase();
-  const imageLower = image ? image.toLowerCase() : '';
-  const metaImageLower = metadata && metadata.image ? metadata.image.toLowerCase() : '';
-  const providerLower = metadata && metadata.provider ? metadata.provider.toLowerCase() : '';
-  const resTypeLower = metadata && metadata.resource_type ? metadata.resource_type.toLowerCase() : '';
+  // 1. Gather all raw strings to analyze
+  const rawStrings = [
+    label,
+    nodeId,
+    type,
+    image || '',
+    metadata?.image || '',
+    metadata?.provider || '',
+    metadata?.resource_type || ''
+  ].filter(Boolean).map(s => s.toLowerCase());
 
-  // 0. Kiểm tra từ khóa Nhãn (label) trước tiên - Độ ưu tiên cao nhất cho thương hiệu
-  if (labelLower.includes('next.js') || labelLower.includes('nextjs')) return 'nextdotjs';
-  if (labelLower.includes('laravel')) return 'laravel';
-  if (labelLower.includes('soketi')) return 'socketio';
-  if (labelLower.includes('nginx')) return 'nginx';
-  if (labelLower.includes('postgres')) return 'postgresql';
-  if (labelLower.includes('redis')) return 'redis';
-  if (labelLower.includes('php')) return 'php';
-  if (labelLower.includes('sqlite')) return 'sqlite';
+  // 2. Clean helper: removes emojis, parentheses content, and version tags
+  const cleanTerm = (term: string): string => {
+    let s = term.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2700}-\u{27BF}]|[\u{2600}-\u{26FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E6}-\u{1F1FF}]|[\u{2B50}]/gu, '');
+    s = s.replace(/🐳|🐘|🐬|💾|📡|❤️|⚛️|🐹|🎼|🔴|☸️|🛡️|⚡|💚|🧡|🅰️|🍃|🧪|💎|🦭|👁️|🔍|🐇|🫘|🦆|🚦|🦍|⚖️|☁️|🌐|🛡️|🧓|🐙|🔥|📊/g, '');
+    s = s.replace(/\([^)]*\)/g, '');
+    s = s.replace(/[:@][\d.]+/g, '');
+    if (s.includes('/')) {
+      const parts = s.split('/');
+      s = parts[parts.length - 1];
+    }
+    return s.trim();
+  };
 
-  // 1. Kiểm tra hình ảnh docker
-  if (imageLower.includes('postgres') || metaImageLower.includes('postgres')) return 'postgresql';
-  if (imageLower.includes('redis') || metaImageLower.includes('redis')) return 'redis';
-  if (imageLower.includes('nginx') || metaImageLower.includes('nginx')) return 'nginx';
-  if (imageLower.includes('golang') || metaImageLower.includes('golang') || imageLower.includes('go:') || metaImageLower.includes('go:')) return 'go';
-  if (imageLower.includes('node') || metaImageLower.includes('node')) return 'nodejs';
-  if (imageLower.includes('python') || metaImageLower.includes('python')) return 'python';
-  if (imageLower.includes('mysql') || metaImageLower.includes('mysql')) return 'mysql';
-  if (imageLower.includes('mongodb') || metaImageLower.includes('mongodb')) return 'mongodb';
-  if (imageLower.includes('rabbitmq') || metaImageLower.includes('rabbitmq')) return 'rabbitmq';
-  if (imageLower.includes('kafka') || metaImageLower.includes('kafka')) return 'kafka';
-  if (imageLower.includes('php') || metaImageLower.includes('php')) return 'php';
-  if (imageLower.includes('soketi') || metaImageLower.includes('soketi')) return 'socketio';
+  const cleanedTerms = rawStrings.map(cleanTerm).filter(Boolean);
 
-  // 2. Kiểm tra từ khóa ID
-  if (idLower.includes('postgres')) return 'postgresql';
-  if (idLower.includes('soketi')) return 'socketio';
-  if (idLower.includes('redis')) return 'redis';
-  if (idLower.includes('nginx')) return 'nginx';
-  if (idLower.includes('gateway')) return 'nginx';
-  if (idLower.includes('mysql')) return 'mysql';
-  if (idLower.includes('mongodb')) return 'mongodb';
-  if (idLower.includes('rabbitmq')) return 'rabbitmq';
-  if (idLower.includes('kafka')) return 'kafka';
-  if (idLower.includes('laravel')) return 'laravel';
-  if (idLower.includes('php')) return 'php';
-  if (idLower.includes('db') || idLower.includes('database')) return 'postgresql';
-  if (idLower.includes('cache')) return 'redis';
+  // 3. Official Brand Mapping (Synonyms that don't match simple slugification)
+  const techMap: Record<string, string> = {
+    'next.js': 'nextdotjs',
+    'nextjs': 'nextdotjs',
+    'react': 'react',
+    'vue': 'vuedotjs',
+    'vue.js': 'vuedotjs',
+    'angular': 'angular',
+    'svelte': 'svelte',
+    'golang': 'go',
+    'go': 'go',
+    'php': 'php',
+    'laravel': 'laravel',
+    'symfony': 'symfony',
+    'node': 'nodedotjs',
+    'node.js': 'nodedotjs',
+    'nodejs': 'nodedotjs',
+    'express': 'express',
+    'nestjs': 'nestjs',
+    'nest': 'nestjs',
+    'soketi': 'socketdotio',
+    'socket.io': 'socketdotio',
+    'socketio': 'socketdotio',
+    'nginx': 'nginx',
+    'caddy': 'caddy',
+    'traefik': 'traefik',
+    'postgres': 'postgresql',
+    'postgresql': 'postgresql',
+    'pgsql': 'postgresql',
+    'mysql': 'mysql',
+    'sqlite': 'sqlite',
+    'redis': 'redis',
+    'cassandra': 'cassandra',
+    'mongodb': 'mongodb',
+    'mongo': 'mongodb',
+    'mariadb': 'mariadb',
+    'rabbitmq': 'rabbitmq',
+    'kafka': 'apachekafka',
+    'elasticsearch': 'elasticsearch',
+    'elastic': 'elasticsearch',
+    'prometheus': 'prometheus',
+    'grafana': 'grafana',
+    'jenkins': 'jenkins',
+    'githubactions': 'githubactions',
+    'github-actions': 'githubactions',
+    'docker': 'docker',
+    'kubernetes': 'kubernetes',
+    'k8s': 'kubernetes',
+    'terraform': 'terraform',
+    'route53': 'amazonroute53',
+    'route-53': 'amazonroute53',
+    'route 53': 'amazonroute53',
+    'dns': 'amazonroute53',
+    'alb': 'amazonelasticloadbalancing',
+    'elb': 'amazonelasticloadbalancing',
+    'waf': 'amazonwaf',
+    'aws-waf': 'amazonwaf',
+    'aws': 'amazonwebservices',
+    'gcp': 'googlecloud',
+    'google-cloud': 'googlecloud',
+    'azure': 'microsoftazure',
+    'cloudflare': 'cloudflare',
+    'digitalocean': 'digitalocean',
+    'github': 'github'
+  };
 
-  // 3. Kiểm tra Terraform Provider / Resource
-  if (providerLower === 'aws') {
-    if (resTypeLower.includes('instance')) return 'aws';
-    if (resTypeLower.includes('db') || resTypeLower.includes('rds')) return 'aws-rds';
-    return 'aws';
+  // 4. Try matching with synonyms first
+  for (const term of cleanedTerms) {
+    if (techMap[term]) {
+      return techMap[term];
+    }
+    for (const [key, slug] of Object.entries(techMap)) {
+      if (term.includes(key)) {
+        return slug;
+      }
+    }
   }
-  if (providerLower === 'google' || providerLower === 'gcp') return 'google-cloud';
 
-  // 4. Các mapping mặc định khác dựa trên loại Node
-  if (type === 'gateway') return 'nginx';
-  if (type === 'database') return 'postgresql';
+  // 5. General fallback: dynamic slugification for anything else
+  for (const term of cleanedTerms) {
+    let slug = term.toLowerCase();
+    if (slug.endsWith('.js')) {
+      slug = slug.substring(0, slug.length - 3) + 'dotjs';
+    }
+    slug = slug.replace(/[^a-z0-9]/g, '');
+    if (slug && slug.length > 1) {
+      return slug;
+    }
+  }
 
   return null;
-};
+};;
 
 // Hàm chuẩn hóa dữ liệu đồ thị thô từ Backend thành các styled Nodes/Edges của React Flow
 const formatGraphData = (rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edges: Edge[] } => {
@@ -134,7 +192,7 @@ const formatGraphData = (rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edg
     cleanLabel = cleanLabel.replace(/🐘|🐬|💾|📡|⚡|❤️|🐳|🌐|⚙️|🗄️|☁️|🐙|🧓|🔥|📊/g, '').trim();
 
     const logoSlug = getLogoSlug(node.id, node.type, cleanLabel, node.metadata?.image, node.metadata);
-    const logoUrl = logoSlug ? `https://thesvg.org/icons/${logoSlug}/default.svg` : null;
+    const logoUrl = logoSlug ? `https://cdn.simpleicons.org/${logoSlug}` : null;
 
     return {
       id: node.id,

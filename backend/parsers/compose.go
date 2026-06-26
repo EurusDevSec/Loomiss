@@ -42,10 +42,21 @@ func ParseDockerCompose(filePath string) ([]domain.Node, []domain.Edge, error) {
 		lowerName := strings.ToLower(name)
 		lowerImage := strings.ToLower(service.Image)
 
-		if isDatabase(lowerName, lowerImage) {
-			nodeType = "database"
-		} else if isGateway(lowerName, lowerImage) {
-			nodeType = "gateway"
+		tech := DetectTechnology(name)
+		if tech == nil {
+			tech = DetectTechnology(service.Image)
+		}
+
+		if tech != nil {
+			if tech.Type == "database" || tech.Type == "gateway" {
+				nodeType = tech.Type
+			}
+		} else {
+			if isDatabase(lowerName, lowerImage) {
+				nodeType = "database"
+			} else if isGateway(lowerName, lowerImage) {
+				nodeType = "gateway"
+			}
 		}
 
 		// 2. Trích xuất cổng ports

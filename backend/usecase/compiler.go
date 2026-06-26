@@ -154,23 +154,51 @@ func CompileGraph(workspacePath string) (*domain.GraphSchema, error) {
 		}
 	}
 
+	// Helper to extract clean image name (e.g. library/postgres:15 -> postgres)
+	extractImageName := func(image string) string {
+		parts := strings.Split(image, "/")
+		img := parts[len(parts)-1]
+		if strings.Contains(img, ":") {
+			partsImg := strings.Split(img, ":")
+			img = partsImg[0]
+		}
+		return img
+	}
+
+	// Helper to title case a string
+	toTitleCase := func(s string) string {
+		if len(s) == 0 {
+			return ""
+		}
+		return strings.ToUpper(s[:1]) + strings.ToLower(s[1:])
+	}
+
 	// Đảm bảo nhãn của các node trong docker-compose-group chuẩn chỉ, sạch sẽ, không có emoji lộn xộn (ByteByteGo style)
 	for id, node := range nodeMap {
 		if node.ParentID == "docker-compose-group" {
-			idLower := strings.ToLower(id)
-			switch idLower {
-			case "nginx":
-				node.Label = "Nginx Reverse Proxy"
-			case "app":
-				node.Label = "Laravel Backend"
-			case "worker":
-				node.Label = "Laravel Queue Worker"
-			case "soketi":
-				node.Label = "Soketi WebSockets"
-			case "postgres":
-				node.Label = "PostgreSQL Database"
-			case "redis":
-				node.Label = "Redis Cache"
+			var tech *parsers.TechDefinition
+			tech = parsers.DetectTechnology(id)
+			if tech == nil && node.Metadata != nil {
+				if img, ok := node.Metadata["image"]; ok && img != "" {
+					tech = parsers.DetectTechnology(img)
+				}
+			}
+
+			if tech != nil {
+				suffix := parsers.GetReadableType(tech.Type)
+				if tech.ID == "nginx" {
+					node.Label = "Nginx Reverse Proxy"
+				} else {
+					node.Label = fmt.Sprintf("%s %s", tech.Name, suffix)
+				}
+			} else {
+				cleanName := id
+				if node.Metadata != nil {
+					if img, ok := node.Metadata["image"]; ok && img != "" {
+						cleanName = extractImageName(img)
+					}
+				}
+				node.Label = fmt.Sprintf("%s Service", toTitleCase(cleanName))
 			}
 			nodeMap[id] = node
 		}
@@ -200,7 +228,7 @@ func CompileGraph(workspacePath string) (*domain.GraphSchema, error) {
 				targetIDLower := strings.ToLower(targetID)
 				targetLabelLower := strings.ToLower(targetNode.Label)
 				// Loại bỏ emoji của target label để so khớp chính xác
-				reEmoji := regexp.MustCompile(`[\x{1F300}-\x{1F9FF}]|[\x{2700}-\x{27BF}]|[\x{2600}-\x{26FF}]|🐳|🐘|🐬|💾|📡|❤️`)
+				reEmoji := regexp.MustCompile(`[\x{1F300}-\x{1F9FF}]|[\x{2700}-\x{27BF}]|[\x{2600}-\x{26FF}]|🐳|🐘|🐬|💾|📡|❤️|⚛️|🐹|🎼|🔴|☸️|🛡️|⚡|💚|🧡|🅰️|🍃|🧪|💎|🦭|👁️|🔍|🐇|🫘|🦆|🚦|🦍|⚖️|☁️|🌐`)
 				targetLabelClean := strings.TrimSpace(reEmoji.ReplaceAllString(targetLabelLower, ""))
 
 				isMatch := targetIDLower == hostLower || targetLabelClean == hostLower
