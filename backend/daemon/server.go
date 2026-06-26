@@ -23,6 +23,14 @@ func StartServer(port int) error {
 		return fmt.Errorf("failed to sub FS: %w", err)
 	}
 
+	hub := NewHub()
+
+	// Khởi chạy File Watcher giám sát thư mục hiện tại ở background
+	err = StartWatcher(".", hub)
+	if err != nil {
+		fmt.Printf("[Loomiss] Warning: failed to start file watcher: %v\n", err)
+	}
+
 	mux := http.NewServeMux()
 	
 	// Server file tĩnh
@@ -43,10 +51,26 @@ func StartServer(port int) error {
 		json.NewEncoder(w).Encode(graph)
 	})
 
-	// Route cho WebSocket (sẽ triển khai hoàn chỉnh ở Phase 3)
+	// Route cho WebSocket nâng cấp kết nối và đăng ký vào Hub
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotImplemented)
-		w.Write([]byte("WebSocket handler not implemented in Phase 1"))
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			fmt.Printf("[Loomiss] WebSocket upgrade error: %v\n", err)
+			return
+		}
+		
+		hub.Register(conn)
+		
+		// Goroutine lắng nghe ngắt kết nối
+		go func() {
+			defer hub.Unregister(conn)
+			for {
+				_, _, err := conn.ReadMessage()
+				if err != nil {
+					break
+				}
+			}
+		}()
 	})
 
 	serverAddr := fmt.Sprintf("localhost:%d", port)
