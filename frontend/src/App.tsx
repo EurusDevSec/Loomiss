@@ -31,6 +31,7 @@ export default function App() {
     fetchGraph,
     setTheme,
     setSelectedNodeId,
+    codeChanges,
   } = useGraphStore();
 
   // Khởi động kết nối WebSocket và tải sơ đồ thực tế khi Component Mount
@@ -221,6 +222,42 @@ export default function App() {
                   LKG Safe mode active
                 </span>
                 <p className="text-xs text-red-400/90 leading-snug">{error}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Workspace File Changes Tracker */}
+          {codeChanges.length > 0 && (
+            <div className={`rounded-xl p-3 border space-y-2 transition-all ${
+              theme === 'dark'
+                ? 'bg-zinc-950/50 border-zinc-900/60'
+                : 'bg-slate-50 border-slate-200/60'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-1.5">
+                  <span className={`text-[10px] font-bold uppercase font-mono tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-slate-600'}`}>
+                    Active Changes
+                  </span>
+                </div>
+                <span className="px-1.5 py-0.5 rounded text-[8px] font-bold font-mono bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                  {codeChanges.length} Files
+                </span>
+              </div>
+              <div className="max-h-[80px] overflow-y-auto space-y-1 pr-1 scrollbar-thin">
+                {codeChanges.map((change, idx) => {
+                  const filename = change.path.split('/').pop() || change.path;
+                  return (
+                    <div key={idx} className="flex items-center justify-between text-[9px] font-mono leading-tight">
+                      <span className={`truncate flex-1 pr-2 ${theme === 'dark' ? 'text-zinc-400' : 'text-slate-600'}`} title={change.path}>
+                        {filename}
+                      </span>
+                      <span className="flex items-center space-x-1 shrink-0">
+                        {change.additions > 0 && <span className="text-green-500 font-bold">+{change.additions}</span>}
+                        {change.deletions > 0 && <span className="text-red-500 font-bold">-{change.deletions}</span>}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

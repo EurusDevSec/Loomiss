@@ -23,9 +23,34 @@ interface ArchitectureNodeProps {
   sourcePosition?: Position;
 }
 
-export default function ArchitectureNode({ data, targetPosition, sourcePosition }: ArchitectureNodeProps) {
+export default function ArchitectureNode({ id, data, targetPosition, sourcePosition }: ArchitectureNodeProps & { id: string }) {
   const [imgError, setImgError] = useState(false);
   const theme = useGraphStore((state) => state.theme);
+  const codeChanges = useGraphStore((state) => state.codeChanges);
+
+  // Match modified files to this node
+  const getNodeChanges = () => {
+    return codeChanges.filter(change => {
+      const pathLower = change.path.toLowerCase();
+      const idLower = id.toLowerCase();
+      const labelLower = (data.label || '').toLowerCase();
+      
+      if (idLower === 'nginx' || idLower.includes('gateway') || labelLower.includes('nginx')) {
+        return pathLower.includes('frontend/') || pathLower.includes('package.json') || pathLower.endsWith('.tsx') || pathLower.endsWith('.ts') || pathLower.endsWith('.css');
+      }
+      if (idLower === 'app' || idLower.includes('backend') || idLower.includes('service') || labelLower.includes('go') || labelLower.includes('backend') || labelLower.includes('sneakers')) {
+        return pathLower.includes('backend/') || pathLower.includes('go.mod') || pathLower.endsWith('.go');
+      }
+      if (idLower.includes('db') || idLower.includes('postgres') || idLower.includes('mysql') || idLower.includes('redis') || idLower.includes('mongo') || labelLower.includes('db') || labelLower.includes('database') || labelLower.includes('cache')) {
+        return pathLower.includes('docker-compose') || pathLower.includes('.tf') || pathLower.includes('.env');
+      }
+      return pathLower.includes(idLower);
+    });
+  };
+
+  const nodeChanges = getNodeChanges();
+  const totalAdditions = nodeChanges.reduce((sum, c) => sum + c.additions, 0);
+  const totalDeletions = nodeChanges.reduce((sum, c) => sum + c.deletions, 0);
 
   // Chọn icon dự phòng dựa trên loại node
   const renderFallbackIcon = () => {
@@ -81,7 +106,7 @@ export default function ArchitectureNode({ data, targetPosition, sourcePosition 
 
   return (
     <div
-      className={`p-3 rounded-xl border-2 w-[240px] text-left transition-all duration-300 select-none ${
+      className={`p-3 rounded-xl border-2 w-[240px] text-left transition-all duration-300 select-none relative ${
         data.activeAgentNode ? 'animate-ripple' : ''
       } ${isGhost ? 'border-dashed' : ''} ${
         theme === 'dark' ? 'backdrop-blur-md' : 'shadow-md shadow-slate-100'
@@ -99,6 +124,26 @@ export default function ArchitectureNode({ data, targetPosition, sourcePosition 
         position={targetPosition || Position.Top}
         className="!bg-zinc-400 !w-2.5 !h-2.5 !border-zinc-950 hover:!bg-cyan-400 transition-colors"
       />
+
+      {/* Code changes badge */}
+      {nodeChanges.length > 0 && (
+        <div 
+          className="absolute -top-3 -right-2 px-2 py-0.5 rounded-full text-[9px] font-bold font-mono border shadow-md flex items-center space-x-1 pointer-events-none select-none z-10"
+          style={{
+            backgroundColor: theme === 'dark' ? 'rgba(34, 197, 94, 0.18)' : 'rgba(34, 197, 94, 0.1)',
+            borderColor: 'rgba(34, 197, 94, 0.4)',
+            color: '#22c55e',
+          }}
+          title={`${nodeChanges.length} files modified (+${totalAdditions} / -${totalDeletions})`}
+        >
+          <span>📝 {nodeChanges.length}</span>
+          {(totalAdditions > 0 || totalDeletions > 0) && (
+            <span className="text-[8px] opacity-90">
+              (+{totalAdditions}/-{totalDeletions})
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="flex items-center space-x-3">
         {/* Hộp Logo hình đại diện */}

@@ -140,6 +140,18 @@ func StartServer(port int) error {
 		
 		hub.Register(conn)
 		
+		// Gửi ngay danh sách thay đổi code hiện tại khi vừa kết nối
+		go func() {
+			changes := GetGitChanges(".")
+			payload, err := json.Marshal(map[string]interface{}{
+				"type":    "CODE_CHANGES",
+				"changes": changes,
+			})
+			if err == nil {
+				_ = conn.WriteMessage(1, payload) // 1 là text message
+			}
+		}()
+		
 		// Goroutine lắng nghe ngắt kết nối
 		go func() {
 			defer hub.Unregister(conn)

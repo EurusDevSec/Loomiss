@@ -13,6 +13,7 @@ interface GraphState {
   theme: 'light' | 'dark';
   selectedNodeId: string | null;
   metricsHistory: Record<string, { cpu: number[]; ram: number[]; network: number[] }>;
+  codeChanges: { path: string; status: string; additions: number; deletions: number; }[];
   
   // Actions
   setElements: (nodes: Node[], edges: Edge[]) => void;
@@ -306,6 +307,7 @@ export const useGraphStore = create<GraphState>((set, get) => {
     websocketStatus: 'disconnected',
     selectedNodeId: null,
     metricsHistory: {},
+    codeChanges: [],
     setTheme: (theme) => set({ theme }),
     setSelectedNodeId: (id) => set({ selectedNodeId: id }),
 
@@ -500,6 +502,11 @@ export const useGraphStore = create<GraphState>((set, get) => {
                 setTimeout(() => {
                   get().setActiveAgentNode(null);
                 }, 4000); // Tắt hiệu ứng sau 4s
+                break;
+              case 'CODE_CHANGES':
+                if (data.changes) {
+                  set({ codeChanges: data.changes });
+                }
                 break;
               case 'METRICS_UPDATE': {
                 const metrics = data.metrics as Record<string, { cpu: number; ram: number; network: number }>;

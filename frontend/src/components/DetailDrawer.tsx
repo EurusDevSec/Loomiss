@@ -3,12 +3,36 @@ import { useGraphStore } from '../store/useGraphStore';
 import { X, Cpu, HardDrive, Terminal } from 'lucide-react';
 
 export default function DetailDrawer() {
-  const { selectedNodeId, nodes, metricsHistory, setSelectedNodeId, theme } = useGraphStore();
+  const { selectedNodeId, nodes, metricsHistory, setSelectedNodeId, theme, codeChanges } = useGraphStore();
   const [logs, setLogs] = useState<string[]>([]);
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
   // Find the selected node
   const node = nodes.find((n) => n.id === selectedNodeId) as any;
+
+  // Match modified files to this node
+  const getNodeChanges = () => {
+    if (!node) return [];
+    const idLower = node.id.toLowerCase();
+    const labelLower = (node.data?.label || '').toLowerCase();
+    
+    return codeChanges.filter(change => {
+      const pathLower = change.path.toLowerCase();
+      
+      if (idLower === 'nginx' || idLower.includes('gateway') || labelLower.includes('nginx')) {
+        return pathLower.includes('frontend/') || pathLower.includes('package.json') || pathLower.endsWith('.tsx') || pathLower.endsWith('.ts') || pathLower.endsWith('.css');
+      }
+      if (idLower === 'app' || idLower.includes('backend') || idLower.includes('service') || labelLower.includes('go') || labelLower.includes('backend') || labelLower.includes('sneakers')) {
+        return pathLower.includes('backend/') || pathLower.includes('go.mod') || pathLower.endsWith('.go');
+      }
+      if (idLower.includes('db') || idLower.includes('postgres') || idLower.includes('mysql') || idLower.includes('redis') || idLower.includes('mongo') || labelLower.includes('db') || labelLower.includes('database') || labelLower.includes('cache')) {
+        return pathLower.includes('docker-compose') || pathLower.includes('.tf') || pathLower.includes('.env');
+      }
+      return pathLower.includes(idLower);
+    });
+  };
+
+  const nodeChanges = getNodeChanges();
 
   // Auto-scroll terminal logs to bottom
   useEffect(() => {
@@ -240,6 +264,50 @@ export default function DetailDrawer() {
           </div>
         )}
       </div>
+
+      {/* Agent Code Changes Section */}
+      {nodeChanges.length > 0 && (
+        <div className="mt-4 space-y-2">
+          <div className="flex items-center space-x-1.5 text-xs font-mono font-bold">
+            <span className={isDark ? 'text-zinc-400' : 'text-slate-500'}>📝 Modified Files</span>
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono bg-green-500/10 border border-green-500/20 text-green-400 animate-pulse">
+              Agent Activity
+            </span>
+          </div>
+          <div className={`max-h-[100px] overflow-y-auto pr-1 space-y-1.5 border rounded-xl p-2.5 scrollbar-thin ${
+            isDark ? 'bg-zinc-950/40 border-zinc-900/60' : 'bg-slate-50 border-slate-100'
+          }`}>
+            {nodeChanges.map((change, idx) => {
+              const filename = change.path.split('/').pop() || change.path;
+              return (
+                <div key={idx} className="flex items-center justify-between text-[10px] font-mono leading-tight">
+                  <div className="min-w-0 flex-1 pr-2">
+                    <div className={`font-bold truncate ${isDark ? 'text-zinc-300' : 'text-slate-700'}`} title={change.path}>
+                      {filename}
+                    </div>
+                    <div className={`text-[8px] truncate ${isDark ? 'text-zinc-600' : 'text-slate-400'}`} title={change.path}>
+                      {change.path}
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2 shrink-0">
+                    <span className={`px-1 rounded text-[8px] font-bold uppercase ${
+                      change.status === 'added' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
+                      change.status === 'deleted' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                      'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                    }`}>
+                      {change.status}
+                    </span>
+                    <span className="flex items-center space-x-0.5 text-[9px]">
+                      {change.additions > 0 && <span className="text-green-500 font-bold">+{change.additions}</span>}
+                      {change.deletions > 0 && <span className="text-red-500 font-bold">-{change.deletions}</span>}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Sparklines Area (Real-time charts) */}
       <div className="mt-5 space-y-4">
