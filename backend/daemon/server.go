@@ -51,6 +51,37 @@ func StartServer(port int) error {
 		json.NewEncoder(w).Encode(graph)
 	})
 
+	// API nhận thông tin intent của AI Agent từ MCP server
+	mux.HandleFunc("/api/agent-activity", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		var payload struct {
+			NodeID string `json:"nodeId"`
+			Action string `json:"action"`
+		}
+
+		err := json.NewDecoder(r.Body).Decode(&payload)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		fmt.Printf("[Loomiss] Received Agent Activity for node: %s, action: %s\n", payload.NodeID, payload.Action)
+
+		// Broadcast sự kiện tới Web UI qua WebSocket
+		hub.Broadcast(map[string]interface{}{
+			"type":   "AGENT_ACTIVITY",
+			"nodeId": payload.NodeID,
+			"action": payload.Action,
+		})
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Broadcasted"))
+	})
+
 	// Route cho WebSocket nâng cấp kết nối và đăng ký vào Hub
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)

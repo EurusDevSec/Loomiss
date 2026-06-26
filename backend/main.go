@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"loomiss/daemon"
+	"loomiss/mcp"
 	"os"
 )
 
@@ -45,8 +46,7 @@ func runDaemon(port int) {
 }
 
 func runMcp() {
-	fmt.Println("[Loomiss] MCP Server handler is not implemented in Phase 1.")
-	os.Exit(0)
+	mcp.StartMcpServer()
 }
 
 func printHelp() {

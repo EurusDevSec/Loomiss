@@ -19,7 +19,7 @@ services:
   database:
     image: postgres:15
     ports:
-      - "5432:5432"
+      - "8888:8888"
 
   redis-cache-service:
     image: redis:7
