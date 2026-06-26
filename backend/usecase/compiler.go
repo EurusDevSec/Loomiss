@@ -2,8 +2,6 @@ package usecase
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"loomiss/domain"
@@ -13,7 +11,6 @@ import (
 // CompileGraph quét toàn bộ thư mục chỉ định và hợp nhất các sơ đồ phân tích được
 func CompileGraph(workspacePath string) (*domain.GraphSchema, error) {
 	var mergedNodes []domain.Node
-	var mergedEdges []domain.Edge
 
 	nodeMap := make(map[string]domain.Node)
 	edgeMap := make(map[string]domain.Edge)
@@ -33,7 +30,7 @@ func CompileGraph(workspacePath string) (*domain.GraphSchema, error) {
 			}
 
 			// Hợp nhất Label (giữ icon đẹp nhất)
-			if existing.Label == "" || strings.HasPrefix(existing.Label, "🐳") || strings.HasPrefix(existing.Label, "☁️") {
+			if existing.Label == "" || strings.HasPrefix(existing.Label, "🐳") || strings.HasPrefix(existing.Label, "☁️") || strings.HasPrefix(existing.Label, "🌐") {
 				// Giữ nguyên nhãn cũ nếu đã có icon
 			} else {
 				existing.Label = node.Label
@@ -71,56 +68,18 @@ func CompileGraph(workspacePath string) (*domain.GraphSchema, error) {
 		}
 	}
 
-	cleanWorkspacePath := filepath.Clean(workspacePath)
-	err := filepath.Walk(cleanWorkspacePath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Tiếp tục quét kể cả khi lỗi đọc một file
-		}
-
-		if info.IsDir() {
-			if filepath.Clean(path) != cleanWorkspacePath {
-				name := info.Name()
-				// Bỏ qua các thư mục hệ thống / phụ trợ lớn để tối ưu hóa
-				if strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin" {
-					return filepath.SkipDir
-				}
-			}
-
-			// Quét các tệp Terraform trong thư mục này
-			tfNodes, tfEdges, err := parsers.ParseTerraformDirectory(path)
-			if err == nil && len(tfNodes) > 0 {
-				addNodes(tfNodes)
-				addEdges(tfEdges)
-			}
-			return nil
-		}
-
-		filename := strings.ToLower(info.Name())
-
-		// Phân tích Docker Compose
-		if filename == "docker-compose.yml" || filename == "docker-compose.yaml" {
-			dcNodes, dcEdges, err := parsers.ParseDockerCompose(path)
+	// Chạy danh sách các parser đăng ký
+	defaultParsers := parsers.GetDefaultParsers()
+	for _, p := range defaultParsers {
+		if p.CanParse(workspacePath) {
+			pNodes, pEdges, err := p.Parse(workspacePath)
 			if err == nil {
-				addNodes(dcNodes)
-				addEdges(dcEdges)
+				addNodes(pNodes)
+				addEdges(pEdges)
 			}
 		}
-
-		// Phân tích Nginx Config
-		if filename == "nginx.conf" || (strings.Contains(filename, "nginx") && strings.HasSuffix(filename, ".conf")) {
-			nxNodes, nxEdges, err := parsers.ParseNginxConfig(path)
-			if err == nil {
-				addNodes(nxNodes)
-				addEdges(nxEdges)
-			}
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to compile graph recursively: %w", err)
 	}
+
 
 	// --- Giai đoạn Resolving (Giải quyết các tham chiếu cổng và sinh Ghost Nodes) ---
 	

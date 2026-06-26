@@ -3,7 +3,10 @@ package parsers
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"loomiss/domain"
 )
 
 func TestParseDockerCompose(t *testing.T) {
@@ -181,3 +184,118 @@ resource "aws_db_instance" "mysql_db" {
 		t.Errorf("expected edge mysql_db -> web_server, got %s -> %s", edges[0].Source, edges[0].Target)
 	}
 }
+
+func TestAppLevelParser(t *testing.T) {
+	// Create a temp workspace directory
+	tmpWorkspace, err := os.MkdirTemp("", "workspace-*")
+	if err != nil {
+		t.Fatalf("failed to create temp workspace: %v", err)
+	}
+	defer os.RemoveAll(tmpWorkspace)
+
+	// Create a subfolder for Node app
+	nodeAppDir := filepath.Join(tmpWorkspace, "my-frontend")
+	if err := os.MkdirAll(nodeAppDir, 0755); err != nil {
+		t.Fatalf("failed to create node app dir: %v", err)
+	}
+
+	pkgContent := `{
+		"name": "my-frontend",
+		"dependencies": {
+			"next": "^13.0.0",
+			"react": "^18.0.0"
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(nodeAppDir, "package.json"), []byte(pkgContent), 0644); err != nil {
+		t.Fatalf("failed to write package.json: %v", err)
+	}
+
+	envContent := `
+PORT=3000
+DATABASE_URL=postgres://user:pass@localhost:5432/mydb
+`
+	if err := os.WriteFile(filepath.Join(nodeAppDir, ".env"), []byte(envContent), 0644); err != nil {
+		t.Fatalf("failed to write .env: %v", err)
+	}
+
+	// Create a subfolder for Go app
+	goAppDir := filepath.Join(tmpWorkspace, "my-backend")
+	if err := os.MkdirAll(goAppDir, 0755); err != nil {
+		t.Fatalf("failed to create go app dir: %v", err)
+	}
+
+	goModContent := `module github.com/user/my-backend
+
+go 1.20
+`
+	if err := os.WriteFile(filepath.Join(goAppDir, "go.mod"), []byte(goModContent), 0644); err != nil {
+		t.Fatalf("failed to write go.mod: %v", err)
+	}
+
+	goEnvContent := `
+PORT=8080
+REDIS_URL=redis://localhost:6379
+`
+	if err := os.WriteFile(filepath.Join(goAppDir, ".env.local"), []byte(goEnvContent), 0644); err != nil {
+		t.Fatalf("failed to write .env.local: %v", err)
+	}
+
+	// Run the parser
+	parser := &AppLevelParser{}
+	if !parser.CanParse(tmpWorkspace) {
+		t.Fatalf("expected AppLevelParser to CanParse the workspace")
+	}
+
+	nodes, edges, err := parser.Parse(tmpWorkspace)
+	if err != nil {
+		t.Fatalf("AppLevelParser Parse failed: %v", err)
+	}
+
+	// We expect 4 nodes: my-frontend, my-frontend-postgres, my-backend, my-backend-redis
+	if len(nodes) != 4 {
+		t.Errorf("expected 4 nodes, got %d", len(nodes))
+	}
+
+	nodeMap := make(map[string]domain.Node)
+	for _, n := range nodes {
+		nodeMap[n.ID] = n
+	}
+
+	if _, ok := nodeMap["my-frontend"]; !ok {
+		t.Errorf("expected my-frontend node")
+	} else {
+		n := nodeMap["my-frontend"]
+		if !strings.Contains(n.Label, "Next.js") {
+			t.Errorf("expected label to contain Next.js, got %s", n.Label)
+		}
+		if n.Metadata["ports"] != "3000" {
+			t.Errorf("expected metadata ports to be 3000, got %s", n.Metadata["ports"])
+		}
+	}
+
+	if _, ok := nodeMap["my-frontend-postgres"]; !ok {
+		t.Errorf("expected my-frontend-postgres node")
+	}
+
+	if _, ok := nodeMap["my-backend"]; !ok {
+		t.Errorf("expected my-backend node")
+	} else {
+		n := nodeMap["my-backend"]
+		if !strings.Contains(n.Label, "Go Backend") {
+			t.Errorf("expected label to contain Go Backend, got %s", n.Label)
+		}
+		if n.Metadata["ports"] != "8080" {
+			t.Errorf("expected metadata ports to be 8080, got %s", n.Metadata["ports"])
+		}
+	}
+
+	if _, ok := nodeMap["my-backend-redis"]; !ok {
+		t.Errorf("expected my-backend-redis node")
+	}
+
+	// We expect 2 edges: my-frontend -> my-frontend-postgres, my-backend -> my-backend-redis
+	if len(edges) != 2 {
+		t.Errorf("expected 2 edges, got %d", len(edges))
+	}
+}
+

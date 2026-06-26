@@ -16,3 +16,11 @@ type CacheRepository interface {
 	GetCache(embedding []float32) (string, error)
 	SetCache(prompt string, embedding []float32, response string) error
 }
+
+// ConfigParser đại diện cho giao diện chung của tất cả các bộ phân tích cấu hình kiến trúc
+type ConfigParser interface {
+	Name() string
+	CanParse(workspacePath string) bool
+	Parse(workspacePath string) ([]Node, []Edge, error)
+}
+
