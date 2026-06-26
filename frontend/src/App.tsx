@@ -3,6 +3,11 @@ import { ReactFlow, Background, Controls } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useGraphStore } from './store/useGraphStore';
 import { Activity, Radio, AlertTriangle, Play, RefreshCw } from 'lucide-react';
+import ArchitectureNode from './components/ArchitectureNode';
+
+const nodeTypes = {
+  architectureNode: ArchitectureNode,
+};
 
 export default function App() {
   const {
@@ -79,6 +84,7 @@ export default function App() {
           <ReactFlow
             nodes={nodes}
             edges={edges}
+            nodeTypes={nodeTypes}
             fitView
             minZoom={0.3}
             maxZoom={1.5}

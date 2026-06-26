@@ -47,48 +47,66 @@ Mở file cấu hình MCP của IDE của bạn (thường nằm ở `C:/Users/<
 
 ## 🛠️ 3. Các Công Cụ (Tools) Cung Cấp Qua MCP
 
-Sau khi tích hợp thành công, AI Agent trong IDE của bạn sẽ có quyền truy cập vào 2 công cụ sau:
+Sau khi tích hợp thành công, AI Agent trong IDE của bạn sẽ có quyền truy cập vào các công cụ sau:
 
 ### 1. `get_architecture_schema`
-*   **Mô tả:** Lấy sơ đồ kiến trúc hiện tại của dự án.
-*   **Tham số đầu vào:** Không có (`{}`).
-*   **Kết quả trả về:** Khung JSON chứa danh sách các `Nodes` (services, resources) và `Edges` (liên kết, dependency) được phân tích từ các tệp `docker-compose.yml`, `nginx.conf`, và `*.tf`.
+*   **Mô tả:** Lấy sơ đồ kiến trúc hiện tại của dự án. Hỗ trợ **Semantic Caching** để lưu đệm kết quả nếu truyền vào tham số `prompt`.
+*   **Tham số đầu vào:**
+    *   `prompt` (string, không bắt buộc): Mô tả câu lệnh yêu cầu của Agent (ví dụ: `"vẽ sơ đồ docker-compose"`).
+*   **Kết quả trả về:** Khung JSON chứa danh sách các `Nodes` và `Edges` được phân tích. Nếu phát hiện câu lệnh tương tự đã chạy trước đó (> 90% tương đồng), hệ thống trả về ngay lập tức từ bộ đệm SQLite (Cache Hit), giúp giảm thiểu thời gian chờ và tiết kiệm LLM token.
 
 ### 2. `report_agent_intent`
-*   **Mô tả:** AI Agent báo cáo ý định thao tác chỉnh sửa tệp tin cấu hình liên quan đến một Node trước khi ghi file, nhằm nhấp nháy sáng giao diện UI.
+*   **Mô tả:** AI Agent báo cáo ý định thao tác chỉnh sửa tệp cấu hình trước khi lưu để phát hiệu ứng động (Ripple) nhấp nháy sáng trên node UI tương ứng.
 *   **Tham số đầu vào:**
-    *   `nodeId` (string, bắt buộc): ID của Node đang tác động (ví dụ: `database`, `sneakers-backend`).
-    *   `action` (string, bắt buộc): Hành động đang thực hiện (`editing`, `creating`, `deleting`).
-*   **Kết quả trả về:** Thông báo phản hồi thành công và nháy sáng xanh lá neon kèm hiệu ứng vòng tròn lan toả (ripple) trên Web UI.
+    *   `nodeId` (string, bắt buộc): ID của Node (ví dụ: `database`, `sneakers-backend`).
+    *   `action` (string, bắt buộc): Hành động (`editing`, `creating`, `deleting`).
+
+### 3. `add_architectural_memory`
+*   **Mô tả:** Lưu quy tắc thiết kế kiến trúc hoặc ghi nhận thực tế của dự án vào bộ nhớ dài hạn SQLite.
+*   **Tham số đầu vào:**
+    *   `fact` (string, bắt buộc): Nội dung quy tắc cần nhớ (ví dụ: `"Container database MySQL chỉ được chạy trong mạng subnet nội bộ, cấm mở ra public"`).
+
+### 4. `get_architectural_memory`
+*   **Mô tả:** Tra cứu các quy tắc thiết kế đã học từ trước dựa trên truy vấn tương đồng ngữ nghĩa vector (threshold > 0.35).
+*   **Tham số đầu vào:**
+    *   `query` (string, bắt buộc): Câu hỏi tra cứu (ví dụ: `"bảo mật subnet database mysql"`).
 
 ---
 
-## 🔬 4. Kiểm Thử Thủ Công & Hướng Dẫn Debug
+## 🔬 4. Kiểm Thử Thủ Công & Hướng Dẫn Debug (E2E Testing)
 
-Trong trường hợp kết nối MCP gặp vấn đề hoặc bạn muốn kiểm thử thủ công qua CLI:
+Bạn có thể kiểm tra các tính năng của MCP (bao gồm cả Caching và Memory) trực tiếp từ dòng lệnh bằng cách pipe các khung tin JSON-RPC chuẩn:
 
-### Kiểm tra giao thức JSON-RPC qua PowerShell:
-Vì MCP giao tiếp thông qua giao thức JSON-RPC qua `stdio` (Standard Input/Output) trên cùng một dòng, bạn có thể kiểm tra trực tiếp bằng cách pipe gói tin JSON-RPC vào lệnh:
+### A. Kiểm tra Semantic Caching (Bộ đệm tương đồng):
+1. **Lần 1 (Tạo cache / Cache Miss):** Gửi gói tin phân tích sơ đồ kèm prompt:
+   ```powershell
+   '{"jsonrpc":"2.0","id":100,"method":"tools/call","params":{"name":"get_architecture_schema","arguments":{"prompt":"render docker-compose network diagram"}}}' | ./loomiss.exe mcp
+   ```
+   *Nhìn vào dòng log stderr sẽ thấy báo:* `Cache Miss. Highest similarity: 0.0000` và `Successfully cached new prompt in DB`.
 
-#### A. Gửi gói tin khởi tạo (`initialize`):
-```powershell
-'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","clientInfo":{"name":"test"},"capabilities":{}}}' | ./loomiss.exe mcp
-```
-*Phản hồi đúng:* Trả về JSON chứa thông tin `Loomiss MCP Server`.
+2. **Lần 2 (Truy vấn trùng / Cache Hit):** Gửi lại đúng gói tin trên hoặc prompt giống hệt:
+   ```powershell
+   '{"jsonrpc":"2.0","id":101,"method":"tools/call","params":{"name":"get_architecture_schema","arguments":{"prompt":"render docker-compose network diagram"}}}' | ./loomiss.exe mcp
+   ```
+   *Nhìn vào dòng log stderr sẽ thấy báo:* `Cache Hit! Saved LLM Tokens. Cosine Similarity: 1.0000` và kết quả trả về ngay lập tức (<10ms).
 
-#### B. Xem danh sách công cụ (`tools/list`):
-```powershell
-'{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | ./loomiss.exe mcp
-```
-*Phản hồi đúng:* Trả về JSON định nghĩa cấu trúc 2 tools `get_architecture_schema` và `report_agent_intent`.
+### B. Kiểm tra Bộ nhớ dài hạn (Vector Memory):
+1. **Lưu Fact:** Gửi gói tin ghi nhớ thiết kế:
+   ```powershell
+   '{"jsonrpc":"2.0","id":102,"method":"tools/call","params":{"name":"add_architectural_memory","arguments":{"fact":"Container database MySQL should only run in internal subnet and not open to public"}}}' | ./loomiss.exe mcp
+   ```
+   *Phản hồi đúng:* `Successfully saved fact to long-term memory...`
 
-#### C. Gọi hiệu ứng Ripple sáng Node từ xa (`report_agent_intent`):
-Đảm bảo bạn đang mở Web UI (`http://localhost:18900`) và chạy lệnh sau:
-```powershell
-'{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"report_agent_intent","arguments":{"nodeId":"database","action":"editing"}}}' | ./loomiss.exe mcp
-```
-*Kỳ vọng:* Web UI lập tức hiển thị hiệu ứng vòng tròn xanh lá lan toả (ripple) xung quanh node database trong 4 giây.
+2. **Truy vấn Fact bằng câu hỏi tương tự:** Gửi gói tin tra cứu:
+   ```powershell
+   '{"jsonrpc":"2.0","id":103,"method":"tools/call","params":{"name":"get_architectural_memory","arguments":{"query":"MySQL database subnet security"}}}' | ./loomiss.exe mcp
+   ```
+   *Phản hồi đúng:* Hệ thống sẽ tự băm vector và tính toán Cosine Similarity để tìm ra quy tắc khớp cao nhất:
+   ```
+   Found 1 relevant architectural rules:
+   1. [Similarity: 0.5345] Container database MySQL should only run in internal subnet and not open to public
+   ```
 
-### Xem log debug của MCP:
-Để không làm hỏng cấu trúc khung tin JSON-RPC trên kênh `stdout`, tất cả các log hoạt động debug của MCP được ghi nhận vào dòng lỗi tiêu chuẩn **`stderr`**. 
-Nếu tích hợp trong IDE báo lỗi không kết nối được, hãy kiểm tra bảng console output hoặc log stderr của IDE để xem chi tiết lỗi phát ra từ Loomiss MCP.
+### Debug & Logs:
+*   Mọi thông tin hoạt động của MCP và Vector Database được in ra **`stderr`** (cổng báo lỗi tiêu chuẩn).
+*   Nếu tích hợp vào IDE bị lỗi, hãy xem log stderr của client IDE để biết nguyên nhân (ví dụ: lỗi kết nối SQLite, lỗi định dạng JSON-RPC).

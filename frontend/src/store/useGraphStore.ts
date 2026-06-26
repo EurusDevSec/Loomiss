@@ -19,46 +19,87 @@ interface GraphState {
   fetchGraph: () => Promise<void>;
 }
 
+// Hỗ trợ map ID và image sang slug logo tương ứng của thesvg.org
+const getLogoSlug = (nodeId: string, type: string, image?: string, metadata?: any): string | null => {
+  const idLower = nodeId.toLowerCase();
+  const imageLower = image ? image.toLowerCase() : '';
+  const metaImageLower = metadata && metadata.image ? metadata.image.toLowerCase() : '';
+  const providerLower = metadata && metadata.provider ? metadata.provider.toLowerCase() : '';
+  const resTypeLower = metadata && metadata.resource_type ? metadata.resource_type.toLowerCase() : '';
+
+  // 1. Kiểm tra hình ảnh docker
+  if (imageLower.includes('postgres') || metaImageLower.includes('postgres')) return 'postgresql';
+  if (imageLower.includes('redis') || metaImageLower.includes('redis')) return 'redis';
+  if (imageLower.includes('nginx') || metaImageLower.includes('nginx')) return 'nginx';
+  if (imageLower.includes('golang') || metaImageLower.includes('golang') || imageLower.includes('go:') || metaImageLower.includes('go:')) return 'go';
+  if (imageLower.includes('node') || metaImageLower.includes('node')) return 'nodejs';
+  if (imageLower.includes('python') || metaImageLower.includes('python')) return 'python';
+  if (imageLower.includes('mysql') || metaImageLower.includes('mysql')) return 'mysql';
+  if (imageLower.includes('mongodb') || metaImageLower.includes('mongodb')) return 'mongodb';
+  if (imageLower.includes('rabbitmq') || metaImageLower.includes('rabbitmq')) return 'rabbitmq';
+  if (imageLower.includes('kafka') || metaImageLower.includes('kafka')) return 'kafka';
+
+  // 2. Kiểm tra từ khóa ID
+  if (idLower.includes('postgres')) return 'postgresql';
+  if (idLower.includes('redis')) return 'redis';
+  if (idLower.includes('nginx')) return 'nginx';
+  if (idLower.includes('gateway')) return 'nginx';
+  if (idLower.includes('mysql')) return 'mysql';
+  if (idLower.includes('mongodb')) return 'mongodb';
+  if (idLower.includes('rabbitmq')) return 'rabbitmq';
+  if (idLower.includes('kafka')) return 'kafka';
+  if (idLower.includes('db') || idLower.includes('database')) return 'postgresql';
+  if (idLower.includes('cache')) return 'redis';
+
+  // 3. Kiểm tra Terraform Provider / Resource
+  if (providerLower === 'aws') {
+    if (resTypeLower.includes('instance')) return 'aws';
+    if (resTypeLower.includes('db') || resTypeLower.includes('rds')) return 'aws-rds';
+    return 'aws';
+  }
+  if (providerLower === 'google' || providerLower === 'gcp') return 'google-cloud';
+
+  // 4. Các mapping mặc định khác dựa trên loại Node
+  if (type === 'gateway') return 'nginx';
+  if (type === 'database') return 'postgresql';
+
+  return null;
+};
+
 // Hàm chuẩn hóa dữ liệu đồ thị thô từ Backend thành các styled Nodes/Edges của React Flow
 const formatGraphData = (rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edges: Edge[] } => {
   const formattedNodes: Node[] = rawNodes.map((node) => {
-    const isNginx = node.id === 'nginx' || node.type === 'gateway';
+    const isNginx = node.id === 'nginx' || node.type === 'gateway' || node.id.includes('nginx') || node.id.includes('gateway');
     const isApp = node.type === 'app';
     const borderClr = isNginx ? '#06b6d4' : isApp ? '#a855f7' : '#f59e0b';
     const shadowClr = isNginx ? 'rgba(6, 182, 212, 0.3)' : isApp ? 'rgba(168, 85, 247, 0.3)' : 'rgba(245, 158, 11, 0.3)';
     
-    // Thêm icon tùy thuộc vào loại node
-    let label = node.label || node.id;
-    if (!label.includes('🌐') && !label.includes('⚙️') && !label.includes('🐳') && !label.includes('🗄️') && !label.includes('☁️')) {
-      if (isNginx) label = '🌐 ' + label;
-      else if (isApp) label = '⚙️ ' + label;
-      else label = '🗄️ ' + label;
-    }
+    // Làm sạch label khỏi các emoji
+    let cleanLabel = node.label || node.id;
+    cleanLabel = cleanLabel.replace(/🌐|⚙️|🐳|🗄️|☁️/g, '').trim();
 
-    // Gắn thêm nhãn cổng nếu có trong metadata
-    const ports = node.metadata?.ports;
-    const displayLabel = ports ? `${label} (${ports})` : label;
+    const logoSlug = getLogoSlug(node.id, node.type, node.metadata?.image, node.metadata);
+    const logoUrl = logoSlug ? `https://thesvg.org/icons/${logoSlug}/default.svg` : null;
 
     return {
       id: node.id,
-      type: 'default',
-      data: { label: displayLabel },
-      position: { x: 0, y: 0 },
-      style: {
-        background: 'rgba(9, 9, 11, 0.8)',
-        color: '#e4e4e7',
-        border: `2px solid ${borderClr}`,
-        borderRadius: '8px',
-        padding: '10px',
-        boxShadow: `0 0 15px ${shadowClr}`,
-        fontWeight: 'bold',
-        width: 220,
+      type: 'architectureNode',
+      data: {
+        label: cleanLabel,
+        type: node.type,
+        status: node.status,
+        metadata: node.metadata,
+        borderClr,
+        shadowClr,
+        logoUrl,
+        activeAgentNode: false,
       },
+      position: { x: 0, y: 0 },
     };
   });
 
   const formattedEdges: Edge[] = rawEdges.map((edge) => {
-    const isNginx = edge.source === 'nginx';
+    const isNginx = edge.source === 'nginx' || edge.source.includes('nginx') || edge.source.includes('gateway');
     const strokeClr = isNginx ? '#06b6d4' : '#a855f7';
     
     return {
@@ -76,55 +117,28 @@ const formatGraphData = (rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edg
   return { nodes: formattedNodes, edges: formattedEdges };
 };
 
-// Dữ liệu mock ban đầu cho DoD của Phase 1
-const mockNodes: Node[] = [
+// Dữ liệu mock ban đầu cho DoD của Phase 1 (được định dạng tương ứng dữ liệu thô)
+const mockRawNodes = [
   {
     id: 'nginx',
-    type: 'default',
-    data: { label: '🌐 Nginx Gateway (Port 80)' },
-    position: { x: 0, y: 0 },
-    style: {
-      background: 'rgba(9, 9, 11, 0.8)',
-      color: '#e4e4e7',
-      border: '2px solid #06b6d4',
-      borderRadius: '8px',
-      padding: '10px',
-      boxShadow: '0 0 15px rgba(6, 182, 212, 0.3)',
-      fontWeight: 'bold',
-      width: 220,
-    },
+    label: 'Nginx Gateway',
+    type: 'gateway',
+    status: 'active',
+    metadata: { ports: '80:80', image: 'nginx:alpine' },
   },
   {
     id: 'app',
-    type: 'default',
-    data: { label: '⚙️ Sneakers App (Port 8080)' },
-    position: { x: 0, y: 0 },
-    style: {
-      background: 'rgba(9, 9, 11, 0.8)',
-      color: '#e4e4e7',
-      border: '2px solid #a855f7',
-      borderRadius: '8px',
-      padding: '10px',
-      boxShadow: '0 0 15px rgba(168, 85, 247, 0.3)',
-      fontWeight: 'bold',
-      width: 220,
-    },
+    label: 'Sneakers App',
+    type: 'app',
+    status: 'active',
+    metadata: { ports: '8080:8080', image: 'golang:1.22' },
   },
   {
     id: 'db',
-    type: 'default',
-    data: { label: '🗄️ Postgres DB (Port 5432)' },
-    position: { x: 0, y: 0 },
-    style: {
-      background: 'rgba(9, 9, 11, 0.8)',
-      color: '#e4e4e7',
-      border: '2px solid #f59e0b',
-      borderRadius: '8px',
-      padding: '10px',
-      boxShadow: '0 0 15px rgba(245, 158, 11, 0.3)',
-      fontWeight: 'bold',
-      width: 220,
-    },
+    label: 'Postgres DB',
+    type: 'database',
+    status: 'active',
+    metadata: { ports: '5432:5432', image: 'postgres:15' },
   },
 ];
 
@@ -152,7 +166,8 @@ const mockEdges: Edge[] = [
 ];
 
 // Áp dụng layout tự động cho dữ liệu mock
-const initialLayout = getLayoutedElements(mockNodes, mockEdges, 'TB');
+const formattedMock = formatGraphData(mockRawNodes, mockEdges);
+const initialLayout = getLayoutedElements(formattedMock.nodes, formattedMock.edges, 'TB');
 
 export const useGraphStore = create<GraphState>((set, get) => {
   let ws: WebSocket | null = null;
