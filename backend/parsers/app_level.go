@@ -9,7 +9,7 @@ import (
 	"loomiss/domain"
 )
 
-// AppLevelParser scans project for package.json, go.mod and .env configurations to build node graphs
+// AppLevelParser scans project for package.json, composer.json, go.mod and .env configurations
 type AppLevelParser struct{}
 
 func (p *AppLevelParser) Name() string { return "AppLevel" }
@@ -38,7 +38,7 @@ func (p *AppLevelParser) CanParse(workspacePath string) bool {
 			return nil
 		}
 		nameLower := strings.ToLower(info.Name())
-		if info.Name() == "package.json" || info.Name() == "go.mod" || info.Name() == "Jenkinsfile" || nameLower == "prometheus.yml" || nameLower == "prometheus.yaml" || nameLower == "grafana.ini" {
+		if info.Name() == "package.json" || info.Name() == "composer.json" || info.Name() == "go.mod" || info.Name() == "Jenkinsfile" || nameLower == "prometheus.yml" || nameLower == "prometheus.yaml" || nameLower == "grafana.ini" {
 			found = true
 			return filepath.SkipDir
 		}
@@ -54,6 +54,22 @@ type PackageJSON struct {
 	Scripts         map[string]string `json:"scripts"`
 }
 
+type ComposerJSON struct {
+	Name    string            `json:"name"`
+	Require map[string]string `json:"require"`
+}
+
+type DirContext struct {
+	Path         string
+	HasComposer  bool
+	HasPackage   bool
+	HasGoMod     bool
+	EnvPath      string
+	PackagePath  string
+	ComposerPath string
+	GoModPath    string
+}
+
 func (p *AppLevelParser) Parse(workspacePath string) ([]domain.Node, []domain.Edge, error) {
 	var nodes []domain.Node
 	var edges []domain.Edge
@@ -62,6 +78,9 @@ func (p *AppLevelParser) Parse(workspacePath string) ([]domain.Node, []domain.Ed
 	var hasJenkins bool
 	var hasPrometheus bool
 	var hasGrafana bool
+
+	// Map to collect context for each directory
+	dirMap := make(map[string]*DirContext)
 
 	err := filepath.Walk(workspacePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -96,24 +115,55 @@ func (p *AppLevelParser) Parse(workspacePath string) ([]domain.Node, []domain.Ed
 			hasGrafana = true
 		}
 
+		// Collect project configuration files
 		dir := filepath.Dir(path)
+		ctx, exists := dirMap[dir]
+		if !exists {
+			ctx = &DirContext{Path: dir}
+			dirMap[dir] = ctx
+		}
+
+		if info.Name() == "composer.json" {
+			ctx.HasComposer = true
+			ctx.ComposerPath = path
+		} else if info.Name() == "package.json" {
+			ctx.HasPackage = true
+			ctx.PackagePath = path
+		} else if info.Name() == "go.mod" {
+			ctx.HasGoMod = true
+			ctx.GoModPath = path
+		} else if strings.HasPrefix(info.Name(), ".env") {
+			// Prioritize shorter env files (e.g. .env or .env.local over others)
+			if ctx.EnvPath == "" || len(info.Name()) < len(filepath.Base(ctx.EnvPath)) {
+				ctx.EnvPath = path
+			}
+		}
+
+		return nil
+	})
+
+	// Process each directory context to create nodes and edges
+	for dir, ctx := range dirMap {
 		folderName := filepath.Base(dir)
 		if folderName == "." || folderName == "/" || folderName == "" || folderName == filepath.Base(workspacePath) {
 			folderName = "root"
 		}
 
-		if info.Name() == "package.json" {
-			pNodes, pEdges := parsePackageJSON(path, dir, folderName)
-			nodes = append(nodes, pNodes...)
-			edges = append(edges, pEdges...)
-		} else if info.Name() == "go.mod" {
-			gNodes, gEdges := parseGoMod(path, dir, folderName)
+		// Prioritize Composer (PHP/Laravel) over package.json (Vite assets runner)
+		if ctx.HasComposer {
+			cNodes, cEdges := parseComposerJSON(ctx.ComposerPath, dir, folderName, ctx.EnvPath)
+			nodes = append(nodes, cNodes...)
+			edges = append(edges, cEdges...)
+		} else if ctx.HasGoMod {
+			gNodes, gEdges := parseGoMod(ctx.GoModPath, dir, folderName, ctx.EnvPath)
 			nodes = append(nodes, gNodes...)
 			edges = append(edges, gEdges...)
+		} else if ctx.HasPackage {
+			pNodes, pEdges := parsePackageJSON(ctx.PackagePath, dir, folderName, ctx.EnvPath)
+			nodes = append(nodes, pNodes...)
+			edges = append(edges, pEdges...)
 		}
-
-		return nil
-	})
+	}
 
 	hasApps := false
 	for _, n := range nodes {
@@ -178,10 +228,124 @@ func (p *AppLevelParser) Parse(workspacePath string) ([]domain.Node, []domain.Ed
 		}
 	}
 
+	// Add decoupling edges if both frontend and backend are found
+	var hasFrontend bool
+	var frontendID string
+	var hasBackend bool
+	var backendID string
+	var soketiID string
+
+	for _, n := range nodes {
+		if n.Type == "app" {
+			idLower := strings.ToLower(n.ID)
+			labelLower := strings.ToLower(n.Label)
+			if strings.Contains(idLower, "frontend") || strings.Contains(labelLower, "frontend") {
+				hasFrontend = true
+				frontendID = n.ID
+			} else if idLower == "laravel" || idLower == "backend" || strings.Contains(labelLower, "backend") {
+				hasBackend = true
+				backendID = n.ID
+			}
+		}
+		if strings.Contains(strings.ToLower(n.ID), "soketi") {
+			soketiID = n.ID
+		}
+	}
+
+	if hasFrontend && hasBackend {
+		edges = append(edges, domain.Edge{
+			ID:     fmt.Sprintf("%s-%s", frontendID, backendID),
+			Source: frontendID,
+			Target: backendID,
+			Label:  "HTTP API",
+		})
+	}
+	if hasFrontend && soketiID != "" {
+		edges = append(edges, domain.Edge{
+			ID:     fmt.Sprintf("%s-%s", frontendID, soketiID),
+			Source: frontendID,
+			Target: soketiID,
+			Label:  "WebSockets",
+		})
+	}
+
 	return nodes, edges, err
 }
 
-func parsePackageJSON(path, dir, folderName string) ([]domain.Node, []domain.Edge) {
+func parseComposerJSON(path, dir, folderName, envPath string) ([]domain.Node, []domain.Edge) {
+	var nodes []domain.Node
+	var edges []domain.Edge
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil
+	}
+
+	var comp ComposerJSON
+	_ = json.Unmarshal(data, &comp)
+
+	label := "🐘 PHP Backend"
+	nodeType := "app"
+
+	isDep := func(name string) bool {
+		if comp.Require == nil {
+			return false
+		}
+		_, ok := comp.Require[name]
+		return ok
+	}
+
+	if isDep("laravel/framework") {
+		label = "🐘 Laravel Backend"
+	} else if isDep("symfony/symfony") || isDep("symfony/http-kernel") {
+		label = "🎼 Symfony Backend"
+	}
+
+	id := comp.Name
+	if id == "" {
+		id = folderName
+	}
+	if strings.Contains(id, "/") {
+		parts := strings.Split(id, "/")
+		id = parts[len(parts)-1]
+	}
+
+	var envMetadata map[string]string
+	var envEdges []domain.Edge
+	var envDBNodes []domain.Node
+	if envPath != "" {
+		envMetadata, envEdges, envDBNodes = parseEnvFileAtPath(envPath, id, "app-workspace-group")
+	}
+
+	metadata := map[string]string{
+		"path": path,
+	}
+	for k, v := range envMetadata {
+		metadata[k] = v
+	}
+
+	rrYaml := filepath.Join(dir, ".rr.yaml")
+	if _, err := os.Stat(rrYaml); err == nil {
+		metadata["server"] = "RoadRunner (Go)"
+	}
+
+	appNode := domain.Node{
+		ID:       id,
+		Label:    fmt.Sprintf("%s (%s)", label, id),
+		Type:     nodeType,
+		Status:   "active",
+		Metadata: metadata,
+		ParentID: "app-workspace-group",
+	}
+
+	nodes = append(nodes, appNode)
+	nodes = append(nodes, envDBNodes...)
+	edges = append(edges, envEdges...)
+
+	return nodes, edges
+}
+
+func parsePackageJSON(path, dir, folderName, envPath string) ([]domain.Node, []domain.Edge) {
 	var nodes []domain.Node
 	var edges []domain.Edge
 
@@ -225,7 +389,12 @@ func parsePackageJSON(path, dir, folderName string) ([]domain.Node, []domain.Edg
 	id = strings.ReplaceAll(id, "@", "")
 	id = strings.ReplaceAll(id, "/", "-")
 
-	envMetadata, envEdges, envDBNodes := parseEnvFile(dir, id, "app-workspace-group")
+	var envMetadata map[string]string
+	var envEdges []domain.Edge
+	var envDBNodes []domain.Node
+	if envPath != "" {
+		envMetadata, envEdges, envDBNodes = parseEnvFileAtPath(envPath, id, "app-workspace-group")
+	}
 
 	metadata := map[string]string{
 		"path": path,
@@ -250,7 +419,7 @@ func parsePackageJSON(path, dir, folderName string) ([]domain.Node, []domain.Edg
 	return nodes, edges
 }
 
-func parseGoMod(path, dir, folderName string) ([]domain.Node, []domain.Edge) {
+func parseGoMod(path, dir, folderName, envPath string) ([]domain.Node, []domain.Edge) {
 	var nodes []domain.Node
 	var edges []domain.Edge
 
@@ -277,7 +446,12 @@ func parseGoMod(path, dir, folderName string) ([]domain.Node, []domain.Edge) {
 		id = folderName
 	}
 
-	envMetadata, envEdges, envDBNodes := parseEnvFile(dir, id, "app-workspace-group")
+	var envMetadata map[string]string
+	var envEdges []domain.Edge
+	var envDBNodes []domain.Node
+	if envPath != "" {
+		envMetadata, envEdges, envDBNodes = parseEnvFileAtPath(envPath, id, "app-workspace-group")
+	}
 
 	metadata := map[string]string{
 		"path": path,
@@ -302,22 +476,13 @@ func parseGoMod(path, dir, folderName string) ([]domain.Node, []domain.Edge) {
 	return nodes, edges
 }
 
-func parseEnvFile(dir string, parentID string, parentGroupID string) (map[string]string, []domain.Edge, []domain.Node) {
+func parseEnvFileAtPath(envPath string, parentID string, parentGroupID string) (map[string]string, []domain.Edge, []domain.Node) {
 	metadata := make(map[string]string)
 	var edges []domain.Edge
 	var nodes []domain.Node
 
-	envFiles := []string{".env", ".env.local", ".env.development", ".env.production"}
-	var envData []byte
-	for _, file := range envFiles {
-		p := filepath.Join(dir, file)
-		if data, e := os.ReadFile(p); e == nil {
-			envData = data
-			break
-		}
-	}
-
-	if len(envData) == 0 {
+	envData, err := os.ReadFile(envPath)
+	if err != nil {
 		return metadata, nil, nil
 	}
 
@@ -339,119 +504,266 @@ func parseEnvFile(dir string, parentID string, parentGroupID string) (map[string
 
 	if port, ok := envMap["PORT"]; ok {
 		metadata["ports"] = port
+	} else if appUrl, ok := envMap["APP_URL"]; ok {
+		if strings.Contains(appUrl, ":") {
+			parts := strings.Split(appUrl, ":")
+			last := parts[len(parts)-1]
+			portVal := ""
+			for _, char := range last {
+				if char >= '0' && char <= '9' {
+					portVal += string(char)
+				}
+			}
+			if portVal != "" {
+				metadata["ports"] = portVal
+			}
+		}
 	}
 
-	dbType := ""
-	dbHost := ""
-	dbPort := ""
-	dbName := ""
+	// 1. Detect Relational / Main Database
+	mainDbType := ""
+	mainDbHost := ""
+	mainDbPort := ""
+	mainDbName := ""
+
+	// Check DB_CONNECTION directly first
+	if conn, ok := envMap["DB_CONNECTION"]; ok {
+		conn = strings.ToLower(conn)
+		if conn == "pgsql" || conn == "postgres" || conn == "postgresql" {
+			mainDbType = "postgres"
+		} else if conn == "mysql" {
+			mainDbType = "mysql"
+		} else if conn == "sqlite" {
+			mainDbType = "sqlite"
+		} else if conn == "mongodb" || conn == "mongo" {
+			mainDbType = "mongodb"
+		}
+	}
+
+	// Fallback/additional database URL/URI checks
+	if mainDbType == "" {
+		if urlVal, ok := envMap["DATABASE_URL"]; ok {
+			urlVal = strings.ToLower(urlVal)
+			if strings.HasPrefix(urlVal, "postgres") || strings.HasPrefix(urlVal, "postgresql") {
+				mainDbType = "postgres"
+			} else if strings.HasPrefix(urlVal, "mysql") {
+				mainDbType = "mysql"
+			}
+		} else if _, ok := envMap["MONGO_URI"]; ok {
+			mainDbType = "mongodb"
+		}
+	}
+
+	// Check environment keys for DB details
+	for k, v := range envMap {
+		kLower := strings.ToLower(k)
+		if strings.Contains(kLower, "db_host") || strings.Contains(kLower, "database_host") {
+			mainDbHost = v
+		}
+		if strings.Contains(kLower, "db_port") || strings.Contains(kLower, "database_port") {
+			mainDbPort = v
+		}
+		if strings.Contains(kLower, "db_name") || strings.Contains(kLower, "database_name") || strings.Contains(kLower, "db_database") {
+			mainDbName = v
+		}
+
+		// Fallback detection of main DB type from keys
+		if mainDbType == "" {
+			if strings.Contains(kLower, "postgres") || strings.Contains(kLower, "pg") {
+				mainDbType = "postgres"
+			} else if strings.Contains(kLower, "mysql") {
+				mainDbType = "mysql"
+			} else if strings.Contains(kLower, "mongo") {
+				mainDbType = "mongodb"
+			}
+		}
+	}
+
+	// Default port for main DB types if not specified
+	if mainDbPort == "" {
+		switch mainDbType {
+		case "postgres":
+			mainDbPort = "5432"
+		case "mysql":
+			mainDbPort = "3306"
+		case "mongodb":
+			mainDbPort = "27017"
+		}
+	}
+
+	// 2. Detect Redis Cache / Queue
+	hasRedis := false
+	redisHost := ""
+	redisPort := ""
 
 	for k, v := range envMap {
 		kLower := strings.ToLower(k)
 		if strings.Contains(kLower, "redis") {
-			dbType = "redis"
-			if strings.Contains(v, "://") {
-				u := strings.Split(v, "://")
-				if len(u) > 1 {
-					hostPort := strings.Split(strings.Split(u[1], "@")[len(strings.Split(u[1], "@"))-1], "/")[0]
-					if strings.Contains(hostPort, ":") {
-						parts := strings.Split(hostPort, ":")
-						dbHost = parts[0]
-						dbPort = parts[1]
-					} else {
-						dbHost = hostPort
-					}
-				}
-			} else if strings.Contains(v, ":") {
-				parts := strings.Split(v, ":")
-				dbHost = parts[0]
-				dbPort = parts[1]
+			hasRedis = true
+			if strings.Contains(kLower, "host") {
+				redisHost = v
+			} else if strings.Contains(kLower, "port") {
+				redisPort = v
 			}
-		} else if strings.Contains(kLower, "postgres") || strings.Contains(kLower, "pg") {
-			dbType = "postgres"
-		} else if strings.Contains(kLower, "mongo") {
-			dbType = "mongodb"
-		} else if strings.Contains(kLower, "mysql") {
-			dbType = "mysql"
 		}
-
-		if strings.Contains(kLower, "db_host") || strings.Contains(kLower, "database_host") {
-			dbHost = v
-		}
-		if strings.Contains(kLower, "db_port") || strings.Contains(kLower, "database_port") {
-			dbPort = v
-		}
-		if strings.Contains(kLower, "db_name") || strings.Contains(kLower, "database_name") {
-			dbName = v
-		}
-	}
-
-	if urlVal, ok := envMap["DATABASE_URL"]; ok {
-		if strings.HasPrefix(urlVal, "postgres") || strings.HasPrefix(urlVal, "postgresql") {
-			dbType = "postgres"
-		} else if strings.HasPrefix(urlVal, "mysql") {
-			dbType = "mysql"
-		}
-	}
-	if _, ok := envMap["MONGO_URI"]; ok {
-		dbType = "mongodb"
 	}
 	if _, ok := envMap["REDIS_URL"]; ok {
-		dbType = "redis"
+		hasRedis = true
+	}
+	if q, ok := envMap["QUEUE_CONNECTION"]; ok && strings.ToLower(q) == "redis" {
+		hasRedis = true
+	}
+	if c, ok := envMap["CACHE_STORE"]; ok && strings.ToLower(c) == "redis" {
+		hasRedis = true
 	}
 
-	if dbType != "" {
-		dbID := parentID + "-" + dbType
+	if hasRedis {
+		if redisHost == "" {
+			redisHost = "redis"
+		}
+		if redisPort == "" {
+			redisPort = "6379"
+		}
+	}
+
+	// 3. Detect Soketi / WebSockets
+	hasSoketi := false
+	soketiHost := ""
+	soketiPort := ""
+
+	for k, v := range envMap {
+		kLower := strings.ToLower(k)
+		if strings.Contains(kLower, "pusher_host") || strings.Contains(kLower, "soketi_host") {
+			hasSoketi = true
+			soketiHost = v
+		}
+		if strings.Contains(kLower, "pusher_port") || strings.Contains(kLower, "soketi_port") {
+			soketiPort = v
+		}
+	}
+	if b, ok := envMap["BROADCAST_CONNECTION"]; ok && (strings.ToLower(b) == "pusher" || strings.ToLower(b) == "soketi") {
+		hasSoketi = true
+	}
+
+	if hasSoketi {
+		if soketiHost == "" {
+			soketiHost = "soketi"
+		}
+		if soketiPort == "" {
+			soketiPort = "6001"
+		}
+	}
+
+	// Add main DB node and edge
+	if mainDbType != "" {
+		dbID := parentID + "-" + mainDbType
 		dbLabel := ""
-		switch dbType {
-		case "redis":
-			dbLabel = "❤️ Redis Cache"
+		switch mainDbType {
 		case "postgres":
 			dbLabel = "🐘 PostgreSQL DB"
-		case "mongodb":
-			dbLabel = "🍃 MongoDB"
 		case "mysql":
 			dbLabel = "🐬 MySQL DB"
+		case "sqlite":
+			dbLabel = "💾 SQLite DB"
+		case "mongodb":
+			dbLabel = "🍃 MongoDB"
 		default:
-			dbLabel = "🗄️ " + strings.Title(dbType) + " Database"
+			dbLabel = "🗄️ " + strings.Title(mainDbType) + " Database"
 		}
 
 		dbMetadata := map[string]string{
-			"type": dbType,
+			"type": mainDbType,
 		}
-		if dbHost != "" {
-			dbMetadata["host"] = dbHost
+		if mainDbHost != "" {
+			dbMetadata["host"] = mainDbHost
 		}
-		if dbPort != "" {
-			dbMetadata["ports"] = dbPort
+		if mainDbPort != "" {
+			dbMetadata["ports"] = mainDbPort
 		}
-		if dbName != "" {
-			dbMetadata["database_name"] = dbName
+		if mainDbName != "" {
+			dbMetadata["database_name"] = mainDbName
 		}
 
-		dbNode := domain.Node{
+		nodes = append(nodes, domain.Node{
 			ID:       dbID,
 			Label:    dbLabel,
 			Type:     "database",
 			Status:   "active",
 			Metadata: dbMetadata,
 			ParentID: parentGroupID,
-		}
+		})
 
 		edgeLabel := "Connects"
-		if dbPort != "" {
-			edgeLabel = fmt.Sprintf("Connects (%s)", dbPort)
+		if mainDbPort != "" {
+			edgeLabel = fmt.Sprintf("Connects (%s)", mainDbPort)
 		}
 
-		dbEdge := domain.Edge{
+		edges = append(edges, domain.Edge{
 			ID:     fmt.Sprintf("%s-%s", parentID, dbID),
 			Source: parentID,
 			Target: dbID,
 			Label:  edgeLabel,
+		})
+	}
+
+	// Add Redis node and edge
+	if hasRedis {
+		redisID := parentID + "-redis"
+		redisMetadata := map[string]string{
+			"type": "redis",
+		}
+		if redisHost != "" {
+			redisMetadata["host"] = redisHost
+		}
+		if redisPort != "" {
+			redisMetadata["ports"] = redisPort
 		}
 
-		nodes = append(nodes, dbNode)
-		edges = append(edges, dbEdge)
+		nodes = append(nodes, domain.Node{
+			ID:       redisID,
+			Label:    "❤️ Redis Cache",
+			Type:     "database",
+			Status:   "active",
+			Metadata: redisMetadata,
+			ParentID: parentGroupID,
+		})
+
+		edges = append(edges, domain.Edge{
+			ID:     fmt.Sprintf("%s-%s", parentID, redisID),
+			Source: parentID,
+			Target: redisID,
+			Label:  fmt.Sprintf("Connects (%s)", redisPort),
+		})
+	}
+
+	// Add Soketi node and edge
+	if hasSoketi {
+		soketiID := parentID + "-soketi"
+		soketiMetadata := map[string]string{
+			"type": "soketi",
+		}
+		if soketiHost != "" {
+			soketiMetadata["host"] = soketiHost
+		}
+		if soketiPort != "" {
+			soketiMetadata["ports"] = soketiPort
+		}
+
+		nodes = append(nodes, domain.Node{
+			ID:       soketiID,
+			Label:    "📡 Soketi WebSockets",
+			Type:     "app",
+			Status:   "active",
+			Metadata: soketiMetadata,
+			ParentID: parentGroupID,
+		})
+
+		edges = append(edges, domain.Edge{
+			ID:     fmt.Sprintf("%s-%s", parentID, soketiID),
+			Source: parentID,
+			Target: soketiID,
+			Label:  fmt.Sprintf("Connects (%s)", soketiPort),
+		})
 	}
 
 	return metadata, edges, nodes

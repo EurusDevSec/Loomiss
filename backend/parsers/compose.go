@@ -14,9 +14,10 @@ type ComposeConfig struct {
 }
 
 type ComposeService struct {
-	Image     string    `yaml:"image"`
-	Ports     yaml.Node `yaml:"ports"`      // Nhận cả dạng list (80:80) và map nếu có
-	DependsOn yaml.Node `yaml:"depends_on"` // Nhận cả dạng list string và map condition
+	Image       string    `yaml:"image"`
+	Ports       yaml.Node `yaml:"ports"`       // Nhận cả dạng list (80:80) và map nếu có
+	DependsOn   yaml.Node `yaml:"depends_on"`  // Nhận cả dạng list string và map condition
+	Environment yaml.Node `yaml:"environment"` // Nhận các biến môi trường để phục vụ Env Linker
 }
 
 // ParseDockerCompose phân tích cú pháp tệp docker-compose.yml
@@ -51,9 +52,14 @@ func ParseDockerCompose(filePath string) ([]domain.Node, []domain.Edge, error) {
 		ports := extractPorts(service.Ports)
 		portsStr := strings.Join(ports, ", ")
 
+		// Trích xuất các biến môi trường để phục vụ suy luận liên kết (Env Linker)
+		envValues := extractEnvValues(service.Environment)
+		envValuesStr := strings.Join(envValues, ",")
+
 		metadata := map[string]string{
-			"image": service.Image,
-			"ports": portsStr,
+			"image":      service.Image,
+			"ports":      portsStr,
+			"env_values": envValuesStr,
 		}
 
 		nodes = append(nodes, domain.Node{
@@ -140,4 +146,40 @@ func extractDependsOn(node yaml.Node) []string {
 		}
 	}
 	return deps
+}
+
+// extractEnvValues trích xuất danh sách giá trị biến môi trường của service
+func extractEnvValues(node yaml.Node) []string {
+	var values []string
+	if node.Kind == yaml.SequenceNode {
+		// Dạng list: - DB_HOST=postgres
+		for _, child := range node.Content {
+			if child.Kind == yaml.ScalarNode {
+				val := child.Value
+				if strings.Contains(val, "=") {
+					parts := strings.SplitN(val, "=", 2)
+					valTrim := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+					if valTrim != "" {
+						values = append(values, valTrim)
+					}
+				} else {
+					valTrim := strings.Trim(strings.TrimSpace(val), `"'`)
+					if valTrim != "" {
+						values = append(values, valTrim)
+					}
+				}
+			}
+		}
+	} else if node.Kind == yaml.MappingNode {
+		// Dạng map: DB_HOST: postgres
+		for i := 0; i < len(node.Content); i += 2 {
+			if i+1 < len(node.Content) && node.Content[i+1].Kind == yaml.ScalarNode {
+				valTrim := strings.Trim(strings.TrimSpace(node.Content[i+1].Value), `"'`)
+				if valTrim != "" {
+					values = append(values, valTrim)
+				}
+			}
+		}
+	}
+	return values
 }

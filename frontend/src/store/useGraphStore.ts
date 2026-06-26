@@ -10,6 +10,8 @@ interface GraphState {
   activeAgentNode: string | null;
   websocketStatus: 'connecting' | 'connected' | 'disconnected';
   
+  theme: 'light' | 'dark';
+  
   // Actions
   setElements: (nodes: Node[], edges: Edge[]) => void;
   setDirection: (dir: 'TB' | 'LR') => void;
@@ -17,15 +19,27 @@ interface GraphState {
   setActiveAgentNode: (nodeId: string | null) => void;
   connectWebSocket: (url?: string) => void;
   fetchGraph: () => Promise<void>;
+  setTheme: (theme: 'light' | 'dark') => void;
 }
 
-// Hỗ trợ map ID và image sang slug logo tương ứng của thesvg.org
-const getLogoSlug = (nodeId: string, type: string, image?: string, metadata?: any): string | null => {
+// Hỗ trợ map ID, nhãn (label) và hình ảnh sang slug logo tương ứng của thesvg.org
+const getLogoSlug = (nodeId: string, type: string, label: string, image?: string, metadata?: any): string | null => {
   const idLower = nodeId.toLowerCase();
+  const labelLower = label.toLowerCase();
   const imageLower = image ? image.toLowerCase() : '';
   const metaImageLower = metadata && metadata.image ? metadata.image.toLowerCase() : '';
   const providerLower = metadata && metadata.provider ? metadata.provider.toLowerCase() : '';
   const resTypeLower = metadata && metadata.resource_type ? metadata.resource_type.toLowerCase() : '';
+
+  // 0. Kiểm tra từ khóa Nhãn (label) trước tiên - Độ ưu tiên cao nhất cho thương hiệu
+  if (labelLower.includes('next.js') || labelLower.includes('nextjs')) return 'nextdotjs';
+  if (labelLower.includes('laravel')) return 'laravel';
+  if (labelLower.includes('soketi')) return 'socketio';
+  if (labelLower.includes('nginx')) return 'nginx';
+  if (labelLower.includes('postgres')) return 'postgresql';
+  if (labelLower.includes('redis')) return 'redis';
+  if (labelLower.includes('php')) return 'php';
+  if (labelLower.includes('sqlite')) return 'sqlite';
 
   // 1. Kiểm tra hình ảnh docker
   if (imageLower.includes('postgres') || metaImageLower.includes('postgres')) return 'postgresql';
@@ -38,9 +52,12 @@ const getLogoSlug = (nodeId: string, type: string, image?: string, metadata?: an
   if (imageLower.includes('mongodb') || metaImageLower.includes('mongodb')) return 'mongodb';
   if (imageLower.includes('rabbitmq') || metaImageLower.includes('rabbitmq')) return 'rabbitmq';
   if (imageLower.includes('kafka') || metaImageLower.includes('kafka')) return 'kafka';
+  if (imageLower.includes('php') || metaImageLower.includes('php')) return 'php';
+  if (imageLower.includes('soketi') || metaImageLower.includes('soketi')) return 'socketio';
 
   // 2. Kiểm tra từ khóa ID
   if (idLower.includes('postgres')) return 'postgresql';
+  if (idLower.includes('soketi')) return 'socketio';
   if (idLower.includes('redis')) return 'redis';
   if (idLower.includes('nginx')) return 'nginx';
   if (idLower.includes('gateway')) return 'nginx';
@@ -48,6 +65,8 @@ const getLogoSlug = (nodeId: string, type: string, image?: string, metadata?: an
   if (idLower.includes('mongodb')) return 'mongodb';
   if (idLower.includes('rabbitmq')) return 'rabbitmq';
   if (idLower.includes('kafka')) return 'kafka';
+  if (idLower.includes('laravel')) return 'laravel';
+  if (idLower.includes('php')) return 'php';
   if (idLower.includes('db') || idLower.includes('database')) return 'postgresql';
   if (idLower.includes('cache')) return 'redis';
 
@@ -108,11 +127,13 @@ const formatGraphData = (rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edg
     const borderClr = isNginx ? '#06b6d4' : isApp ? '#a855f7' : '#f59e0b';
     const shadowClr = isNginx ? 'rgba(6, 182, 212, 0.3)' : isApp ? 'rgba(168, 85, 247, 0.3)' : 'rgba(245, 158, 11, 0.3)';
     
-    // Làm sạch label khỏi các emoji
+    // Làm sạch label khỏi các emoji và ký tự biểu cảm lộn xộn để có giao diện phẳng chuyên nghiệp
     let cleanLabel = node.label || node.id;
-    cleanLabel = cleanLabel.replace(/🌐|⚙️|🐳|🗄️|☁️/g, '').trim();
+    // Bỏ tất cả emoji phổ biến và cụ thể
+    cleanLabel = cleanLabel.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2700}-\u{27BF}]|[\u{2600}-\u{26FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E6}-\u{1F1FF}]|[\u{2B50}]/gu, '').trim();
+    cleanLabel = cleanLabel.replace(/🐘|🐬|💾|📡|⚡|❤️|🐳|🌐|⚙️|🗄️|☁️|🐙|🧓|🔥|📊/g, '').trim();
 
-    const logoSlug = getLogoSlug(node.id, node.type, node.metadata?.image, node.metadata);
+    const logoSlug = getLogoSlug(node.id, node.type, cleanLabel, node.metadata?.image, node.metadata);
     const logoUrl = logoSlug ? `https://thesvg.org/icons/${logoSlug}/default.svg` : null;
 
     return {
@@ -142,6 +163,7 @@ const formatGraphData = (rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edg
       source: edge.source,
       target: edge.target,
       label: edge.label || '',
+      type: 'smoothstep',
       animated: true,
       style: { stroke: strokeClr, strokeWidth: 2 },
       labelStyle: { fill: '#a1a1aa', fontSize: 10, fontWeight: 'bold' },
@@ -213,7 +235,9 @@ export const useGraphStore = create<GraphState>((set, get) => {
     direction: 'TB',
     error: null,
     activeAgentNode: null,
+    theme: 'light',
     websocketStatus: 'disconnected',
+    setTheme: (theme) => set({ theme }),
 
     setElements: (nodes, edges) => {
       const { direction } = get();

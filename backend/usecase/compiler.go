@@ -84,7 +84,195 @@ func CompileGraph(workspacePath string) (*domain.GraphSchema, error) {
 			}
 		}
 	}
+	// --- Giai đoạn Post-Processing (Tối ưu hóa và hợp nhất đồ thị) ---
 
+	var hasDockerNginx bool
+	var hasDockerApp bool
+	var dockerAppID string
+	var hasDockerSoketi bool
+	var dockerSoketiID string
+
+	for id, node := range nodeMap {
+		idLower := strings.ToLower(id)
+		if node.ParentID == "docker-compose-group" {
+			if idLower == "nginx" {
+				hasDockerNginx = true
+			} else if idLower == "app" || idLower == "backend" {
+				hasDockerApp = true
+				dockerAppID = id
+			} else if idLower == "soketi" {
+				hasDockerSoketi = true
+				dockerSoketiID = id
+			}
+		}
+	}
+
+	// Định nghĩa bản đồ hợp nhất để ánh xạ các node local/app level vào các node Docker tương ứng
+	mergeMappings := make(map[string]string)
+	if hasDockerApp {
+		mergeMappings["laravel"] = dockerAppID
+		mergeMappings["backend"] = dockerAppID
+		mergeMappings["laravel-postgres"] = "postgres"
+		mergeMappings["backend-postgres"] = "postgres"
+		mergeMappings["laravel-pgsql"] = "postgres"
+		mergeMappings["backend-pgsql"] = "postgres"
+		mergeMappings["laravel-redis"] = "redis"
+		mergeMappings["backend-redis"] = "redis"
+		mergeMappings["laravel-sqlite"] = "postgres" // Chuyển kết nối SQLite local thành Postgres trong container
+	}
+	if hasDockerSoketi {
+		mergeMappings["laravel-soketi"] = dockerSoketiID
+		mergeMappings["backend-soketi"] = dockerSoketiID
+	}
+
+	// Thực hiện hợp nhất các thuộc tính của các node bị gộp
+	for sourceID, targetID := range mergeMappings {
+		sourceNode, sourceExists := nodeMap[sourceID]
+		targetNode, targetExists := nodeMap[targetID]
+		if sourceExists && targetExists {
+			// Nâng cấp nhãn và icon của targetNode dựa trên sourceNode đẹp hơn (không áp dụng cho database để tránh SQLite đè Postgres)
+			if targetNode.Type != "database" && sourceNode.Label != "" && !strings.HasPrefix(targetNode.Label, "🐘") && !strings.HasPrefix(targetNode.Label, "📡") {
+				cleanLabel := sourceNode.Label
+				if strings.Contains(cleanLabel, " (") {
+					parts := strings.Split(cleanLabel, " (")
+					cleanLabel = parts[0]
+				}
+				targetNode.Label = fmt.Sprintf("%s (%s)", cleanLabel, targetNode.ID)
+			}
+			// Gộp metadata
+			if targetNode.Metadata == nil {
+				targetNode.Metadata = make(map[string]string)
+			}
+			for k, v := range sourceNode.Metadata {
+				if v != "" {
+					targetNode.Metadata[k] = v
+				}
+			}
+			nodeMap[targetID] = targetNode
+			// Xóa node local thừa
+			delete(nodeMap, sourceID)
+		}
+	}
+
+	// Đảm bảo nhãn của các node trong docker-compose-group chuẩn chỉ, sạch sẽ, không có emoji lộn xộn (ByteByteGo style)
+	for id, node := range nodeMap {
+		if node.ParentID == "docker-compose-group" {
+			idLower := strings.ToLower(id)
+			switch idLower {
+			case "nginx":
+				node.Label = "Nginx Reverse Proxy"
+			case "app":
+				node.Label = "Laravel Backend"
+			case "worker":
+				node.Label = "Laravel Queue Worker"
+			case "soketi":
+				node.Label = "Soketi WebSockets"
+			case "postgres":
+				node.Label = "PostgreSQL Database"
+			case "redis":
+				node.Label = "Redis Cache"
+			}
+			nodeMap[id] = node
+		}
+	}
+
+	// --- Giai đoạn 2.5: Tự động suy luận Edge từ biến môi trường (Env Linker) ---
+	for id, node := range nodeMap {
+		envValsStr, exists := node.Metadata["env_values"]
+		if !exists || envValsStr == "" {
+			continue
+		}
+
+		envVals := strings.Split(envValsStr, ",")
+		for _, val := range envVals {
+			host := extractHostFromEnvValue(val)
+			if host == "" {
+				continue
+			}
+			hostLower := strings.ToLower(host)
+
+			// Tìm kiếm node đích tương xứng trong nodeMap
+			for targetID, targetNode := range nodeMap {
+				if id == targetID {
+					continue
+				}
+
+				targetIDLower := strings.ToLower(targetID)
+				targetLabelLower := strings.ToLower(targetNode.Label)
+				// Loại bỏ emoji của target label để so khớp chính xác
+				reEmoji := regexp.MustCompile(`[\x{1F300}-\x{1F9FF}]|[\x{2700}-\x{27BF}]|[\x{2600}-\x{26FF}]|🐳|🐘|🐬|💾|📡|❤️`)
+				targetLabelClean := strings.TrimSpace(reEmoji.ReplaceAllString(targetLabelLower, ""))
+
+				isMatch := targetIDLower == hostLower || targetLabelClean == hostLower
+
+				// So khớp thêm qua host metadata nếu có
+				if !isMatch && targetNode.Metadata != nil {
+					if th, ok := targetNode.Metadata["host"]; ok && strings.ToLower(th) == hostLower {
+						isMatch = true
+					}
+				}
+
+				if isMatch {
+					edgePort := extractPortFromEnvValue(val)
+					edgeLabel := "Connects"
+					if edgePort != "" {
+						edgeLabel = fmt.Sprintf("Connects (%s)", edgePort)
+					}
+
+					edgeKey := fmt.Sprintf("%s->%s", id, targetID)
+					if _, ok := edgeMap[edgeKey]; !ok {
+						edgeMap[edgeKey] = domain.Edge{
+							ID:     fmt.Sprintf("%s-%s", id, targetID),
+							Source: id,
+							Target: targetID,
+							Label:  edgeLabel,
+						}
+					}
+					break // Đã match target, chuyển sang biến môi trường tiếp theo
+				}
+			}
+		}
+	}
+
+	// Định tuyến lại các Edges dựa trên bản đồ hợp nhất và Nginx Proxy
+	newEdgeMap := make(map[string]domain.Edge)
+	for _, edge := range edgeMap {
+		src := edge.Source
+		tgt := edge.Target
+
+		if mappedSrc, exists := mergeMappings[src]; exists {
+			src = mappedSrc
+		}
+		if mappedTgt, exists := mergeMappings[tgt]; exists {
+			tgt = mappedTgt
+		}
+
+		// Nếu Nginx tồn tại và Edge đi từ Frontend tới App, định tuyến lại qua Nginx (Reverse Proxy)
+		if hasDockerNginx {
+			if strings.Contains(strings.ToLower(src), "frontend") {
+				if tgt == dockerAppID {
+					tgt = "nginx"
+					edge.Label = "HTTP API"
+				}
+			}
+		}
+
+		// Tránh tự nối vòng (self-loop)
+		if src == tgt {
+			continue
+		}
+
+		edgeKey := fmt.Sprintf("%s->%s", src, tgt)
+		edge.Source = src
+		edge.Target = tgt
+		edge.ID = fmt.Sprintf("%s-%s", src, tgt)
+
+		// Chỉ giữ edge có label chi tiết nhất
+		if existing, exists := newEdgeMap[edgeKey]; !exists || len(edge.Label) > len(existing.Label) {
+			newEdgeMap[edgeKey] = edge
+		}
+	}
+	edgeMap = newEdgeMap
 
 	// --- Giai đoạn Resolving (Giải quyết các tham chiếu cổng và sinh Ghost Nodes) ---
 	
@@ -181,6 +369,44 @@ func parsePortFromEdge(edge domain.Edge) string {
 	// 2. Thử lấy từ Label (dạng "Proxy Pass (8080)")
 	re := regexp.MustCompile(`\((\d+)\)`)
 	matches := re.FindStringSubmatch(edge.Label)
+	if len(matches) >= 2 {
+		return matches[1]
+	}
+	return ""
+}
+
+// extractHostFromEnvValue trích xuất hostname hoặc IP từ chuỗi biến môi trường
+func extractHostFromEnvValue(val string) string {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return ""
+	}
+	// 1. Tách schema nếu có (e.g. redis://redis:6379)
+	if strings.Contains(val, "://") {
+		parts := strings.SplitN(val, "://", 2)
+		val = parts[1]
+	}
+	// 2. Loại bỏ credentials (e.g. user:pass@db:5432)
+	if strings.Contains(val, "@") {
+		parts := strings.SplitN(val, "@", 2)
+		val = parts[1]
+	}
+	// 3. Loại bỏ paths và ports (e.g. db:5432/dbname)
+	if strings.Contains(val, "/") {
+		parts := strings.SplitN(val, "/", 2)
+		val = parts[0]
+	}
+	if strings.Contains(val, ":") {
+		parts := strings.SplitN(val, ":", 2)
+		val = parts[0]
+	}
+	return strings.TrimSpace(val)
+}
+
+// extractPortFromEnvValue trích xuất port số từ chuỗi biến môi trường
+func extractPortFromEnvValue(val string) string {
+	rePort := regexp.MustCompile(`:(\d+)`)
+	matches := rePort.FindStringSubmatch(val)
 	if len(matches) >= 2 {
 		return matches[1]
 	}

@@ -17,8 +17,19 @@ func shouldSkipDir(path string, info os.FileInfo, workspacePath string) bool {
 	if cleanPath == cleanWorkspace {
 		return false
 	}
-	name := info.Name()
-	return strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin"
+	name := strings.ToLower(info.Name())
+	return strings.HasPrefix(name, ".") || 
+		name == "node_modules" || 
+		name == "vendor" || 
+		name == "tests" || 
+		name == "dist" || 
+		name == "bin" ||
+		name == "venv" ||
+		name == ".venv" ||
+		name == ".idea" ||
+		name == ".vscode" ||
+		name == "build" ||
+		name == "target"
 }
 
 // DockerComposeParser wraps ParseDockerCompose

@@ -1,6 +1,7 @@
 package parsers
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -293,9 +294,124 @@ REDIS_URL=redis://localhost:6379
 		t.Errorf("expected my-backend-redis node")
 	}
 
-	// We expect 2 edges: my-frontend -> my-frontend-postgres, my-backend -> my-backend-redis
-	if len(edges) != 2 {
-		t.Errorf("expected 2 edges, got %d", len(edges))
+	// We expect 3 edges: my-frontend -> my-frontend-postgres, my-backend -> my-backend-redis, and my-frontend -> my-backend
+	if len(edges) != 3 {
+		t.Errorf("expected 3 edges, got %d", len(edges))
+	}
+
+	eMap := make(map[string]domain.Edge)
+	for _, e := range edges {
+		eMap[fmt.Sprintf("%s->%s", e.Source, e.Target)] = e
+	}
+
+	if _, ok := eMap["my-frontend->my-backend"]; !ok {
+		t.Errorf("expected my-frontend -> my-backend edge to be created")
+	} else if eMap["my-frontend->my-backend"].Label != "HTTP API" {
+		t.Errorf("expected edge label to be HTTP API, got %s", eMap["my-frontend->my-backend"].Label)
 	}
 }
+
+func TestParseNginxConfigUpstreamAndComments(t *testing.T) {
+	content := `
+# proxy_pass http://commented-out-host:8080;
+upstream backend_pool {
+    server app1:3000 weight=3;
+    server app2:3000;
+}
+
+server {
+    listen 80;
+    server_name localhost;
+
+    location / {
+        proxy_pass http://backend_pool;
+    }
+}
+`
+	tmpFile, err := os.CreateTemp("", "nginx-*.conf")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.WriteString(content); err != nil {
+		t.Fatalf("failed to write to temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	_, edges, err := ParseNginxConfig(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("ParseNginxConfig failed: %v", err)
+	}
+
+	// 1. Kiểm tra không có target nào chứa 'commented-out-host'
+	for _, edge := range edges {
+		if strings.Contains(edge.Target, "commented-out-host") {
+			t.Errorf("expected commented-out host to be ignored, but found in edge: %v", edge)
+		}
+	}
+
+	// 2. Kiểm tra Upstream Pool đã được phân rã thành các node app1 và app2
+	foundApp1 := false
+	foundApp2 := false
+	for _, edge := range edges {
+		if edge.Source == "nginx" && edge.Target == "app1" {
+			foundApp1 = true
+		}
+		if edge.Source == "nginx" && edge.Target == "app2" {
+			foundApp2 = true
+		}
+	}
+
+	if !foundApp1 || !foundApp2 {
+		t.Errorf("expected edges to app1 and app2 resolved from upstream backend_pool, got foundApp1=%t, foundApp2=%t", foundApp1, foundApp2)
+	}
+}
+
+func TestDockerComposeEnvironment(t *testing.T) {
+	content := `
+version: '3'
+services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+  api:
+    image: sneakers-app:1.0
+    environment:
+      - DB_HOST=postgres-db
+      - REDIS_URL=redis://redis-cache:6379
+`
+	tmpFile, err := os.CreateTemp("", "docker-compose-*.yml")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.WriteString(content); err != nil {
+		t.Fatalf("failed to write to temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	nodes, _, err := ParseDockerCompose(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("ParseDockerCompose failed: %v", err)
+	}
+
+	foundAPI := false
+	for _, node := range nodes {
+		if node.ID == "api" {
+			foundAPI = true
+			envValues := node.Metadata["env_values"]
+			if !strings.Contains(envValues, "postgres-db") || !strings.Contains(envValues, "redis://redis-cache:6379") {
+				t.Errorf("expected env_values metadata to contain environment values, got: %s", envValues)
+			}
+		}
+	}
+
+	if !foundAPI {
+		t.Errorf("expected api node to be parsed")
+	}
+}
+
 

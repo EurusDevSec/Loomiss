@@ -1,6 +1,7 @@
 import { Handle, Position } from '@xyflow/react';
 import { Database, Server, Globe, HelpCircle } from 'lucide-react';
 import { useState } from 'react';
+import { useGraphStore } from '../store/useGraphStore';
 
 interface ArchitectureNodeProps {
   data: {
@@ -24,45 +25,59 @@ interface ArchitectureNodeProps {
 
 export default function ArchitectureNode({ data, targetPosition, sourcePosition }: ArchitectureNodeProps) {
   const [imgError, setImgError] = useState(false);
+  const theme = useGraphStore((state) => state.theme);
 
   // Chọn icon dự phòng dựa trên loại node
   const renderFallbackIcon = () => {
     switch (data.type) {
       case 'gateway':
-        return <Globe className="h-5 w-5 text-cyan-400" />;
+        return <Globe className="h-5 w-5 text-cyan-500" />;
       case 'database':
         return <Database className="h-5 w-5 text-amber-500" />;
       case 'unknown_service':
         return <HelpCircle className="h-5 w-5 text-zinc-400" />;
       default:
-        return <Server className="h-5 w-5 text-purple-400" />;
+        return <Server className="h-5 w-5 text-purple-500" />;
     }
   };
 
   const hasLogo = data.logoUrl && !imgError;
   const isGhost = data.type === 'unknown_service';
 
+  // Theme settings
+  const bgClr = theme === 'dark' ? 'rgba(9, 9, 11, 0.85)' : '#ffffff';
+  const titleText = theme === 'dark' ? 'text-zinc-100' : 'text-slate-900';
+  const detailText = theme === 'dark' ? 'text-zinc-400' : 'text-slate-500';
+  const extraText = theme === 'dark' ? 'text-zinc-500' : 'text-slate-400';
+  const logoBoxBg = theme === 'dark' ? 'bg-zinc-950 border-zinc-800/80' : 'bg-slate-50 border-slate-200/80';
+
   return (
     <div
-      className={`glass-panel p-3 rounded-xl border-2 w-[240px] text-left transition-all duration-300 select-none ${
+      className={`p-3 rounded-xl border-2 w-[240px] text-left transition-all duration-300 select-none ${
         data.activeAgentNode ? 'animate-ripple' : ''
-      } ${isGhost ? 'border-dashed' : ''}`}
+      } ${isGhost ? 'border-dashed' : ''} ${
+        theme === 'dark' ? 'backdrop-blur-md' : 'shadow-md shadow-slate-100'
+      }`}
       style={{
         borderColor: data.activeAgentNode ? '#22c55e' : data.borderClr,
-        boxShadow: data.activeAgentNode ? '0 0 25px rgba(34, 197, 150, 0.6)' : `0 0 15px ${data.shadowClr}`,
-        background: 'rgba(9, 9, 11, 0.85)',
+        boxShadow: data.activeAgentNode 
+          ? '0 0 25px rgba(34, 197, 150, 0.6)' 
+          : (theme === 'dark' 
+              ? `0 4px 20px rgba(0, 0, 0, 0.35), 0 0 12px ${data.borderClr}22` 
+              : `0 8px 30px rgba(15, 23, 42, 0.05), 0 0 12px ${data.borderClr}12`),
+        background: bgClr,
       }}
     >
       {/* Target Connection point */}
       <Handle
         type="target"
         position={targetPosition || Position.Top}
-        className="!bg-zinc-700 !w-2.5 !h-2.5 !border-zinc-950 hover:!bg-cyan-400 transition-colors"
+        className="!bg-zinc-400 !w-2.5 !h-2.5 !border-zinc-950 hover:!bg-cyan-400 transition-colors"
       />
 
       <div className="flex items-center space-x-3">
         {/* Hộp Logo hình đại diện */}
-        <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center bg-zinc-950 border border-zinc-800/80 rounded-lg p-1.5 shadow-inner">
+        <div className={`flex-shrink-0 w-9 h-9 flex items-center justify-center border rounded-lg p-1.5 shadow-sm ${logoBoxBg}`}>
           {hasLogo ? (
             <img
               src={data.logoUrl!}
@@ -77,17 +92,17 @@ export default function ArchitectureNode({ data, targetPosition, sourcePosition 
 
         {/* Nội dung chi tiết Service */}
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-bold text-zinc-100 truncate">{data.label}</div>
+          <div className={`text-xs font-bold truncate ${titleText}`}>{data.label}</div>
           
           {data.metadata?.ports && (
-            <div className="text-[10px] text-zinc-400 font-mono mt-0.5 truncate">
+            <div className={`text-[10px] font-mono mt-0.5 truncate ${detailText}`}>
               Port: {data.metadata.ports}
             </div>
           )}
           
           {data.metadata?.image && (
             <div
-              className="text-[9px] text-zinc-500 font-mono truncate max-w-[170px] mt-0.5"
+              className={`text-[9px] font-mono truncate max-w-[170px] mt-0.5 ${extraText}`}
               title={data.metadata.image}
             >
               {data.metadata.image}
@@ -96,7 +111,7 @@ export default function ArchitectureNode({ data, targetPosition, sourcePosition 
 
           {data.metadata?.resource_type && (
             <div
-              className="text-[9px] text-zinc-500 font-mono truncate max-w-[170px] mt-0.5"
+              className={`text-[9px] font-mono truncate max-w-[170px] mt-0.5 ${extraText}`}
               title={data.metadata.resource_type}
             >
               {data.metadata.resource_type}
@@ -109,7 +124,7 @@ export default function ArchitectureNode({ data, targetPosition, sourcePosition 
       <Handle
         type="source"
         position={sourcePosition || Position.Bottom}
-        className="!bg-zinc-700 !w-2.5 !h-2.5 !border-zinc-950 hover:!bg-cyan-400 transition-colors"
+        className="!bg-zinc-400 !w-2.5 !h-2.5 !border-zinc-950 hover:!bg-cyan-400 transition-colors"
       />
     </div>
   );
