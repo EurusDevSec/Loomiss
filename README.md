@@ -108,19 +108,34 @@ Loomiss includes modular `ConfigParser` implementations to parse and group the f
 
 ## 🚀 Getting Started
 
-### Prerequisites
+Loomiss is packaged as a **completely standalone binary** containing both the embedded React frontend and the Go engine. **You do NOT need Go, Node.js, or npm to run it.** 
 
-- [Go 1.22+](https://golang.org/doc/install) (to build or run from source)
-- [Node.js v18+](https://nodejs.org) (to edit or compile the React frontend)
+---
 
-### Installation & Global PATH Setup
+### 1. Quick Start (No Dependencies Needed)
 
-Loomiss provides automated scripts to check prerequisites, build both frontend and backend, compile the single binary, and add it to your shell/system PATH automatically.
+If you already have the pre-compiled binary `loomiss.exe` (or `loomiss` on Linux/macOS):
 
-#### Option A: Automated Installer (Recommended)
+1. **Copy** the binary to your target project root folder (or add it to your system's global `PATH`).
+2. **Run** the command:
+   ```bash
+   ./loomiss.exe start
+   ```
+3. Open `http://localhost:18900` in your browser.
+
+---
+
+### 2. Building from Source & Installation (For Developers)
+
+If you want to modify Loomiss, compile it yourself, or automate global setup, you will need:
+- [Go 1.22+](https://golang.org/doc/install)
+- [Node.js v18+](https://nodejs.org)
+
+#### Option A: Automated Build & Installer (Recommended)
+Our automated setup scripts check your prerequisites, install node dependencies, build the React frontend, compile the Go binary, and configure your system `PATH` automatically:
 
 - **On Windows (PowerShell):**
-  Open PowerShell as Administrator (if needed for PATH writing) in the project directory and run:
+  Open PowerShell as Administrator and run:
   ```powershell
   PowerShell -ExecutionPolicy Bypass -File ./setup.ps1
   ```
@@ -147,7 +162,7 @@ Loomiss provides automated scripts to check prerequisites, build both frontend a
    cd ..
    ```
 3. To configure the `loomiss` command globally, add the root directory containing `loomiss.exe` (or `loomiss` on Unix) to your system environment `Path` (Windows) or shell profile (Linux/macOS).
-   - Restart your terminal. You can now execute `loomiss` from any project folder!
+4. Restart your terminal. You can now execute `loomiss` from any project folder!
 
 ---
 
