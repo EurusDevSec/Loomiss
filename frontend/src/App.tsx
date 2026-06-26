@@ -5,10 +5,15 @@ import { useGraphStore } from './store/useGraphStore';
 import { Activity, Radio, AlertTriangle, Play, RefreshCw, Sun, Moon } from 'lucide-react';
 import ArchitectureNode from './components/ArchitectureNode';
 import GroupNode from './components/GroupNode';
+import TrafficEdge from './components/TrafficEdge';
 
 const nodeTypes = {
   architectureNode: ArchitectureNode,
   group: GroupNode,
+};
+
+const edgeTypes = {
+  traffic: TrafficEdge,
 };
 
 export default function App() {
@@ -99,6 +104,7 @@ export default function App() {
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
             fitView
             minZoom={0.3}
             maxZoom={1.5}

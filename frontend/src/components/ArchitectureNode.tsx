@@ -54,10 +54,14 @@ export default function ArchitectureNode({ data, targetPosition, sourcePosition 
   const isDiffAdd = (data as any).isDiffAdd;
   const isDiffDelete = (data as any).isDiffDelete;
 
+  const cpuVal = (data as any).cpu || 0;
+  const isCpuSpike = cpuVal > 80;
+
   let nodeBorderColor = data.borderClr;
   if (data.activeAgentNode) nodeBorderColor = '#22c55e';
   else if (isDiffAdd) nodeBorderColor = '#22c55e';
   else if (isDiffDelete) nodeBorderColor = '#ef4444';
+  else if (isCpuSpike) nodeBorderColor = '#ef4444';
 
   let nodeBoxShadow = theme === 'dark' 
     ? `0 4px 20px rgba(0, 0, 0, 0.35), 0 0 12px ${data.borderClr}22` 
@@ -69,6 +73,8 @@ export default function ArchitectureNode({ data, targetPosition, sourcePosition 
     nodeBoxShadow = '0 0 20px rgba(34, 197, 94, 0.5)';
   } else if (isDiffDelete) {
     nodeBoxShadow = '0 0 20px rgba(239, 68, 68, 0.4)';
+  } else if (isCpuSpike) {
+    nodeBoxShadow = '0 0 25px rgba(239, 68, 68, 0.6)';
   }
 
   const nodeOpacity = isDiffDelete ? 0.5 : 1;
@@ -134,6 +140,44 @@ export default function ArchitectureNode({ data, targetPosition, sourcePosition 
               title={data.metadata.resource_type}
             >
               {data.metadata.resource_type}
+            </div>
+          )}
+
+          {/* Live Metrics Overlay */}
+          {((data as any).cpu !== undefined || (data as any).ram !== undefined) && (
+            <div className="mt-2 pt-1.5 border-t border-zinc-200 dark:border-zinc-800/40 flex flex-col space-y-1">
+              {(data as any).cpu !== undefined && (
+                <div className="flex items-center justify-between text-[9px] font-mono">
+                  <span className={detailText}>CPU</span>
+                  <div className="flex items-center space-x-1.5 w-2/3">
+                    <div className="flex-1 h-1.5 bg-zinc-200 dark:bg-zinc-800/80 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500 shadow-[0_0_8px_#06b6d4]"
+                        style={{ width: `${(data as any).cpu}%`, backgroundColor: (data as any).cpu > 80 ? '#ef4444' : '#06b6d4' }}
+                      />
+                    </div>
+                    <span className={`w-8 text-right font-bold ${(data as any).cpu > 80 ? 'text-red-500 animate-pulse' : titleText}`}>
+                      {Math.round((data as any).cpu)}%
+                    </span>
+                  </div>
+                </div>
+              )}
+              {(data as any).ram !== undefined && (
+                <div className="flex items-center justify-between text-[9px] font-mono">
+                  <span className={detailText}>RAM</span>
+                  <div className="flex items-center space-x-1.5 w-2/3">
+                    <div className="flex-1 h-1.5 bg-zinc-200 dark:bg-zinc-800/80 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500 shadow-[0_0_8px_#a855f7]"
+                        style={{ width: `${(data as any).ram}%`, backgroundColor: (data as any).ram > 80 ? '#ef4444' : '#a855f7' }}
+                      />
+                    </div>
+                    <span className={`w-8 text-right font-bold ${(data as any).ram > 80 ? 'text-red-500 animate-pulse' : titleText}`}>
+                      {Math.round((data as any).ram)}%
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

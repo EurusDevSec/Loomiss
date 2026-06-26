@@ -31,6 +31,9 @@ func StartServer(port int) error {
 		fmt.Printf("[Loomiss] Warning: failed to start file watcher: %v\n", err)
 	}
 
+	// Khởi chạy Metrics Streamer ở background
+	StartMetricsStreamer(hub)
+
 	mux := http.NewServeMux()
 	
 	// Server file tĩnh

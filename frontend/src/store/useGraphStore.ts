@@ -221,11 +221,12 @@ const formatGraphData = (rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edg
       source: edge.source,
       target: edge.target,
       label: edge.label || '',
-      type: 'smoothstep',
+      type: 'traffic',
       animated: true,
       style: { stroke: strokeClr, strokeWidth: 2 },
       labelStyle: { fill: '#a1a1aa', fontSize: 10, fontWeight: 'bold' },
       labelBgStyle: { fill: '#18181b', fillOpacity: 0.8 },
+      data: { network: 0 }
     };
   });
 
@@ -490,6 +491,40 @@ export const useGraphStore = create<GraphState>((set, get) => {
                   get().setActiveAgentNode(null);
                 }, 4000); // Tắt hiệu ứng sau 4s
                 break;
+              case 'METRICS_UPDATE': {
+                const metrics = data.metrics as Record<string, { cpu: number; ram: number; network: number }>;
+                set((state) => {
+                  const updatedNodes = state.nodes.map(node => {
+                    if (metrics[node.id]) {
+                      return {
+                        ...node,
+                        data: {
+                          ...node.data,
+                          cpu: metrics[node.id].cpu,
+                          ram: metrics[node.id].ram,
+                        }
+                      };
+                    }
+                    return node;
+                  });
+
+                  const updatedEdges = state.edges.map(edge => {
+                    const sourceMetrics = metrics[edge.source];
+                    const targetMetrics = metrics[edge.target];
+                    const networkVal = sourceMetrics?.network || targetMetrics?.network || 0;
+                    return {
+                      ...edge,
+                      data: {
+                        ...edge.data,
+                        network: networkVal
+                      }
+                    };
+                  });
+
+                  return { nodes: updatedNodes, edges: updatedEdges };
+                });
+                break;
+              }
             }
           } catch (e) {
             console.error('Lỗi phân tích WebSocket payload:', e);
