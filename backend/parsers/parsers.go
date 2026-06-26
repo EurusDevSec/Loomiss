@@ -7,6 +7,20 @@ import (
 	"loomiss/domain"
 )
 
+// shouldSkipDir checks if a directory should be skipped during walk
+func shouldSkipDir(path string, info os.FileInfo, workspacePath string) bool {
+	if !info.IsDir() {
+		return false
+	}
+	cleanPath := filepath.Clean(path)
+	cleanWorkspace := filepath.Clean(workspacePath)
+	if cleanPath == cleanWorkspace {
+		return false
+	}
+	name := info.Name()
+	return strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin"
+}
+
 // DockerComposeParser wraps ParseDockerCompose
 type DockerComposeParser struct{}
 
@@ -19,8 +33,7 @@ func (p *DockerComposeParser) CanParse(workspacePath string) bool {
 			return nil
 		}
 		if info.IsDir() {
-			name := info.Name()
-			if strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin" {
+			if shouldSkipDir(path, info, workspacePath) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -44,8 +57,7 @@ func (p *DockerComposeParser) Parse(workspacePath string) ([]domain.Node, []doma
 			return nil
 		}
 		if info.IsDir() {
-			name := info.Name()
-			if strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin" {
+			if shouldSkipDir(path, info, workspacePath) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -75,8 +87,7 @@ func (p *NginxParser) CanParse(workspacePath string) bool {
 			return nil
 		}
 		if info.IsDir() {
-			name := info.Name()
-			if strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin" {
+			if shouldSkipDir(path, info, workspacePath) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -100,8 +111,7 @@ func (p *NginxParser) Parse(workspacePath string) ([]domain.Node, []domain.Edge,
 			return nil
 		}
 		if info.IsDir() {
-			name := info.Name()
-			if strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin" {
+			if shouldSkipDir(path, info, workspacePath) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -131,8 +141,7 @@ func (p *TerraformParser) CanParse(workspacePath string) bool {
 			return nil
 		}
 		if info.IsDir() {
-			name := info.Name()
-			if strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin" {
+			if shouldSkipDir(path, info, workspacePath) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -155,8 +164,7 @@ func (p *TerraformParser) Parse(workspacePath string) ([]domain.Node, []domain.E
 			return nil
 		}
 		if info.IsDir() {
-			name := info.Name()
-			if strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin" {
+			if shouldSkipDir(path, info, workspacePath) {
 				return filepath.SkipDir
 			}
 			tfNodes, tfEdges, err := ParseTerraformDirectory(path)

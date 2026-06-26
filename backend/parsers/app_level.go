@@ -21,8 +21,7 @@ func (p *AppLevelParser) CanParse(workspacePath string) bool {
 			return nil
 		}
 		if info.IsDir() {
-			name := info.Name()
-			if strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin" {
+			if shouldSkipDir(path, info, workspacePath) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -52,8 +51,7 @@ func (p *AppLevelParser) Parse(workspacePath string) ([]domain.Node, []domain.Ed
 			return nil
 		}
 		if info.IsDir() {
-			name := info.Name()
-			if strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin" {
+			if shouldSkipDir(path, info, workspacePath) {
 				return filepath.SkipDir
 			}
 			return nil
