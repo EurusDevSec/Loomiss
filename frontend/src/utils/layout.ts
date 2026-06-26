@@ -3,10 +3,35 @@ import { Position } from '@xyflow/react';
 import type { Node, Edge } from '@xyflow/react';
 
 const nodeWidth = 240;
-const nodeHeight = 72;
 const groupPadding = 45; // Spacing margin for child nodes inside parents
 const rowHeight = 130;
 const colWidth = 280;
+
+const getNodeHeight = (node: Node): number => {
+  if (node.type === 'group') return 0;
+  
+  let height = 64; // Safe base height including padding, logo box, and title
+  
+  const metadata = (node.data as any)?.metadata || {};
+  if (metadata.ports) {
+    height += 16;
+  }
+  if (metadata.image) {
+    height += 14;
+  }
+  if (metadata.resource_type) {
+    height += 14;
+  }
+  
+  // CPU and RAM metrics
+  const hasCpu = (node.data as any)?.cpu !== undefined;
+  const hasRam = (node.data as any)?.ram !== undefined;
+  if (hasCpu || hasRam) {
+    height += 48;
+  }
+  
+  return height;
+};
 
 const getRowIndex = (node: Node): number => {
   const idLower = node.id.toLowerCase();
@@ -97,8 +122,18 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'T
     }
 
     // Translate to top-left relative coordinates and set dimensions
+    let maxContentBottom = -Infinity;
+    children.forEach((child) => {
+      const coord = coords[child.id];
+      const childHeight = getNodeHeight(child);
+      const bottom = coord.y + childHeight;
+      if (bottom > maxContentBottom) {
+        maxContentBottom = bottom;
+      }
+    });
+
     const width = (maxX - minX) + nodeWidth + groupPadding * 2;
-    const height = (maxY - minY) + nodeHeight + groupPadding * 2 + 15;
+    const height = (maxContentBottom - minY) + groupPadding * 2 + 15;
     groupDimensions[group.id] = { width, height };
 
     children.forEach((child) => {
@@ -127,7 +162,8 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'T
   // Add standalone leaf nodes to Dagre
   const standaloneLeafs = leafNodes.filter((n) => !n.parentId);
   standaloneLeafs.forEach((node) => {
-    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
+    const h = getNodeHeight(node);
+    dagreGraph.setNode(node.id, { width: nodeWidth, height: h });
   });
 
   // Add edges to Dagre between top-level components (groups or standalone nodes)
@@ -163,16 +199,11 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'T
     };
   });
 
-  const updatedLeafNodes = leafNodes.map((node) => {
-    const targetPosition = isHorizontal ? Position.Left : Position.Top;
-    const sourcePosition = isHorizontal ? Position.Right : Position.Bottom;
-
+  const updatedLeafNodesTemp = leafNodes.map((node) => {
     if (node.parentId) {
       const relPos = childRelativePositions[node.id];
       return {
         ...node,
-        targetPosition,
-        sourcePosition,
         position: { x: relPos.x, y: relPos.y },
       };
     }
@@ -181,17 +212,80 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'T
     if (!leafPos) {
       return {
         ...node,
-        targetPosition,
-        sourcePosition,
         position: { x: 0, y: 0 },
       };
     }
 
     return {
       ...node,
+      position: { x: leafPos.x - nodeWidth / 2, y: leafPos.y - getNodeHeight(node) / 2 },
+    };
+  });
+
+  const getAbsolutePos = (node: Node) => {
+    if (node.parentId) {
+      const parent = updatedGroupNodes.find(g => g.id === node.parentId);
+      if (parent) {
+        return {
+          x: node.position.x + parent.position.x,
+          y: node.position.y + parent.position.y
+        };
+      }
+    }
+    return node.position;
+  };
+
+  const updatedLeafNodes = updatedLeafNodesTemp.map((node) => {
+    // Default fallback based on global layout direction
+    let targetPosition = isHorizontal ? Position.Left : Position.Top;
+    let sourcePosition = isHorizontal ? Position.Right : Position.Bottom;
+
+    const nodeAbs = getAbsolutePos(node);
+
+    // 1. Determine targetPosition from incoming edges
+    const incomingEdges = edges.filter(e => e.target === node.id);
+    if (incomingEdges.length > 0) {
+      const srcNode = leafNodes.find(n => n.id === incomingEdges[0].source);
+      if (srcNode) {
+        const updatedSrc = updatedLeafNodesTemp.find(n => n.id === srcNode.id);
+        if (updatedSrc) {
+          const srcAbs = getAbsolutePos(updatedSrc);
+          const dx = nodeAbs.x - srcAbs.x;
+          const dy = nodeAbs.y - srcAbs.y;
+
+          if (Math.abs(dx) > Math.abs(dy)) {
+            targetPosition = dx > 0 ? Position.Left : Position.Right;
+          } else {
+            targetPosition = dy > 0 ? Position.Top : Position.Bottom;
+          }
+        }
+      }
+    }
+
+    // 2. Determine sourcePosition from outgoing edges
+    const outgoingEdges = edges.filter(e => e.source === node.id);
+    if (outgoingEdges.length > 0) {
+      const tgtNode = leafNodes.find(n => n.id === outgoingEdges[0].target);
+      if (tgtNode) {
+        const updatedTgt = updatedLeafNodesTemp.find(n => n.id === tgtNode.id);
+        if (updatedTgt) {
+          const tgtAbs = getAbsolutePos(updatedTgt);
+          const dx = tgtAbs.x - nodeAbs.x;
+          const dy = tgtAbs.y - nodeAbs.y;
+
+          if (Math.abs(dx) > Math.abs(dy)) {
+            sourcePosition = dx > 0 ? Position.Right : Position.Left;
+          } else {
+            sourcePosition = dy > 0 ? Position.Bottom : Position.Top;
+          }
+        }
+      }
+    }
+
+    return {
+      ...node,
       targetPosition,
-      sourcePosition,
-      position: { x: leafPos.x - nodeWidth / 2, y: leafPos.y - nodeHeight / 2 },
+      sourcePosition
     };
   });
 
