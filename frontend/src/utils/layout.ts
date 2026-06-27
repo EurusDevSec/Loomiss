@@ -4,8 +4,8 @@ import type { Node, Edge } from '@xyflow/react';
 
 const nodeWidth = 240;
 const groupPadding = 45; // Spacing margin for child nodes inside parents
-const rowHeight = 130;
-const colWidth = 280;
+const rowHeight = 180;
+const colWidth = 360;
 
 const getNodeHeight = (node: Node): number => {
   if (node.type === 'group') return 0;

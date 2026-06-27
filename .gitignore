@@ -6,3 +6,6 @@ microservices-demo/
 
 # Logs
 *.log
+
+# Temp Build Cache
+backend/tmp/

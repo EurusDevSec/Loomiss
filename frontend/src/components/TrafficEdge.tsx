@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { BaseEdge, getSmoothStepPath, EdgeLabelRenderer, useNodes } from '@xyflow/react';
 import type { EdgeProps } from '@xyflow/react';
 import { getSmartEdge } from '@jalez/react-flow-smart-edge';
+import { useGraphStore } from '../store/useGraphStore';
 
 export default function TrafficEdge({
   sourceX,
@@ -14,9 +16,13 @@ export default function TrafficEdge({
   label,
   labelStyle,
   labelBgStyle,
-  data
+  data,
+  source,
+  target
 }: EdgeProps) {
   const nodes = useNodes();
+  const [isHovered, setIsHovered] = useState(false);
+  const selectedNodeId = useGraphStore(state => state.selectedNodeId);
 
   let edgePath = '';
   let labelX = 0;
@@ -102,7 +108,21 @@ export default function TrafficEdge({
     }
   }
 
-  const particleColor = style.stroke || '#a855f7';
+  const isRelated = selectedNodeId ? (source === selectedNodeId || target === selectedNodeId) : false;
+  const baseOpacity = selectedNodeId ? (isRelated ? 1.0 : 0.15) : 1.0;
+  const currentOpacity = isHovered ? 1.0 : baseOpacity;
+
+  const activeColor = isHovered ? '#06b6d4' : (style.stroke || '#a855f7');
+  const particleColor = activeColor;
+  const particleRadius = isHovered ? 5.5 : 3.5;
+
+  const currentStyle = {
+    ...style,
+    strokeWidth: isHovered ? 4.5 : (style.strokeWidth || 2),
+    stroke: activeColor,
+    opacity: currentOpacity,
+    transition: 'stroke 0.2s, stroke-width 0.2s, opacity 0.2s',
+  };
 
   // Format label string (add custom metrics inside the label if present)
   let displayLabel = label;
@@ -123,29 +143,37 @@ export default function TrafficEdge({
         </filter>
       </defs>
 
-      <BaseEdge path={edgePath} markerEnd={markerEnd} style={style} />
-      
-      {showParticle && (
-        <circle r="3.5" fill={particleColor} filter="url(#traffic-glow)">
-          <animateMotion dur={dur} repeatCount="indefinite" path={edgePath} />
-        </circle>
-      )}
+      <g
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        style={{ cursor: 'pointer' }}
+      >
+        <BaseEdge path={edgePath} markerEnd={markerEnd} style={currentStyle} />
+        
+        {showParticle && (
+          <circle r={particleRadius} fill={particleColor} filter="url(#traffic-glow)" opacity={currentOpacity}>
+            <animateMotion dur={dur} repeatCount="indefinite" path={edgePath} />
+          </circle>
+        )}
+      </g>
 
       {displayLabel && (
         <EdgeLabelRenderer>
           <div
             style={{
-              position: 'absolute',
-              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-              background: (labelBgStyle?.fill as string) || '#18181b',
-              padding: '2px 6px',
-              borderRadius: '4px',
-              fontSize: '10px',
-              fontWeight: 'bold',
-              color: (labelStyle?.fill as string) || '#a1a1aa',
-              border: '1px solid rgba(63, 63, 70, 0.4)',
-              pointerEvents: 'all',
-              userSelect: 'none',
+               position: 'absolute',
+               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+               background: (labelBgStyle?.fill as string) || '#18181b',
+               padding: '2px 6px',
+               borderRadius: '4px',
+               fontSize: '10px',
+               fontWeight: 'bold',
+               color: (labelStyle?.fill as string) || '#a1a1aa',
+               border: '1px solid rgba(63, 63, 70, 0.4)',
+               pointerEvents: 'all',
+               userSelect: 'none',
+               opacity: currentOpacity,
+               transition: 'opacity 0.2s',
             }}
             className="nodrag nopan"
           >
