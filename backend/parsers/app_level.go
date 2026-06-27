@@ -405,7 +405,7 @@ func parsePackageJSON(path, dir, folderName, envPath string) ([]domain.Node, []d
 		}
 	}
 
-	id := pkg.Name
+	id := getServiceFolderID(path, pkg.Name)
 	if id == "" {
 		id = folderName
 	}
@@ -464,7 +464,7 @@ func parseGoMod(path, dir, folderName, envPath string) ([]domain.Node, []domain.
 		}
 	}
 
-	id := moduleName
+	id := getServiceFolderID(path, moduleName)
 	if id == "" {
 		id = folderName
 	}
@@ -792,11 +792,23 @@ func parseEnvFileAtPath(envPath string, parentID string, parentGroupID string) (
 	return metadata, edges, nodes
 }
 
+func getServiceFolderID(path string, fallback string) string {
+	path = filepath.ToSlash(path)
+	if idx := strings.Index(path, "/src/"); idx != -1 {
+		subpath := path[idx+5:]
+		parts := strings.Split(subpath, "/")
+		if len(parts) > 0 && parts[0] != "" {
+			return parts[0]
+		}
+	}
+	return fallback
+}
+
 func parsePythonProject(path, dir, folderName, envPath string) ([]domain.Node, []domain.Edge) {
 	var nodes []domain.Node
 	var edges []domain.Edge
 
-	id := folderName
+	id := getServiceFolderID(path, folderName)
 	var envMetadata map[string]string
 	var envEdges []domain.Edge
 	var envDBNodes []domain.Node
@@ -831,7 +843,7 @@ func parseJavaProject(path, dir, folderName, envPath string) ([]domain.Node, []d
 	var nodes []domain.Node
 	var edges []domain.Edge
 
-	id := folderName
+	id := getServiceFolderID(path, folderName)
 	var envMetadata map[string]string
 	var envEdges []domain.Edge
 	var envDBNodes []domain.Node
@@ -866,7 +878,7 @@ func parseCSharpProject(path, dir, folderName, envPath string) ([]domain.Node, [
 	var nodes []domain.Node
 	var edges []domain.Edge
 
-	id := folderName
+	id := getServiceFolderID(path, folderName)
 	var envMetadata map[string]string
 	var envEdges []domain.Edge
 	var envDBNodes []domain.Node

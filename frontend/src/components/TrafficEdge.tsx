@@ -1,5 +1,6 @@
-import { BaseEdge, getSmoothStepPath, EdgeLabelRenderer } from '@xyflow/react';
+import { BaseEdge, getSmoothStepPath, EdgeLabelRenderer, useNodes } from '@xyflow/react';
 import type { EdgeProps } from '@xyflow/react';
+import { getSmartEdge } from '@jalez/react-flow-smart-edge';
 
 export default function TrafficEdge({
   sourceX,
@@ -15,14 +16,39 @@ export default function TrafficEdge({
   labelBgStyle,
   data
 }: EdgeProps) {
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
+  const nodes = useNodes();
+
+  let edgePath = '';
+  let labelX = 0;
+  let labelY = 0;
+
+  const smartEdgeResult = getSmartEdge({
+    sourcePosition,
+    targetPosition,
     sourceX,
     sourceY,
-    sourcePosition,
     targetX,
     targetY,
-    targetPosition,
+    nodes,
   });
+
+  if (smartEdgeResult && !(smartEdgeResult instanceof Error)) {
+    edgePath = smartEdgeResult.svgPathString;
+    labelX = smartEdgeResult.edgeCenterX;
+    labelY = smartEdgeResult.edgeCenterY;
+  } else {
+    const [fallbackPath, fallbackX, fallbackY] = getSmoothStepPath({
+      sourceX,
+      sourceY,
+      sourcePosition,
+      targetX,
+      targetY,
+      targetPosition,
+    });
+    edgePath = fallbackPath;
+    labelX = fallbackX;
+    labelY = fallbackY;
+  }
 
   const isDependsOn = typeof label === 'string' && (label.includes('Depends On') || label.includes('depends_on'));
 
