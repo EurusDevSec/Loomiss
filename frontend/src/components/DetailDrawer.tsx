@@ -384,6 +384,31 @@ User prompt / follow-up:
     }
   };
 
+  const getNodeChips = () => {
+    const idLower = node.id.toLowerCase();
+    const labelLower = (node.data?.label || '').toLowerCase();
+
+    if (idLower === 'nginx' || idLower.includes('gateway') || labelLower.includes('nginx')) {
+      return [
+        { text: '🔒 Verify Gateway TLS', prompt: 'Audit Nginx configuration for secure HTTPS reverse proxy setups. Provide sample configuration.' },
+        { text: '🐳 Check Port Mappings', prompt: 'Is it secure to expose Nginx on port 80? What are the standard patterns to protect gateways?' },
+        { text: '📈 Optimize Traffic Latency', prompt: 'Analyze proxy pass settings. How can we optimize gateway performance and proxy buffers?' }
+      ];
+    }
+    if (idLower.includes('db') || idLower.includes('postgres') || idLower.includes('redis') || labelLower.includes('database') || labelLower.includes('cache')) {
+      return [
+        { text: '🛡️ Audit Port 8888 Exposure', prompt: 'Review database container setup. Provide a docker-compose snippet mapping ports securely.' },
+        { text: '🐳 Setup Private Network', prompt: 'How do we enable private container-to-container networks for databases in Docker Compose?' },
+        { text: '📝 Inspect Storage Volumes', prompt: 'What database persistence volume best practices should be used in dev and production?' }
+      ];
+    }
+    return [
+      { text: '📝 Scan Go Source Code', prompt: 'Review backend Go application structure and main.go. Suggest security or robustness improvements.' },
+      { text: '📈 Diagnose CPU/RAM Spikes', prompt: 'We saw high CPU usage in the backend node. How do we profile and optimize CPU in Go runtimes?' },
+      { text: '🐳 Audit Dockerfile Best Practices', prompt: 'Analyze golang:1.22 Docker container configurations. Suggest security optimizations (like non-root users).' }
+    ];
+  };
+
   const formatMarkdown = (text: string) => {
     const lines = text.split('\n');
     const renderedElements: React.ReactNode[] = [];
@@ -394,7 +419,7 @@ User prompt / follow-up:
       if (line.trim().startsWith('```')) {
         if (inCodeBlock) {
           renderedElements.push(
-            <pre key={`code-${index}`} className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800/80 font-mono text-[10px] text-zinc-350 overflow-x-auto my-1.5 select-text">
+            <pre key={`code-${index}`} className="bg-slate-950 dark:bg-zinc-950 p-2.5 rounded-lg border border-slate-800 dark:border-zinc-800/80 font-mono text-[10px] text-slate-200 dark:text-zinc-300 overflow-x-auto my-2 select-text">
               <code>{codeBlockLines.join('\n')}</code>
             </pre>
           );
@@ -415,10 +440,10 @@ User prompt / follow-up:
         const parts = str.split(/(\*\*.*?\*\*|`.*?`)/g);
         return parts.map((part, pIdx) => {
           if (part.startsWith('**') && part.endsWith('**')) {
-            return <strong key={pIdx} className="font-bold text-zinc-150 dark:text-white">{part.slice(2, -2)}</strong>;
+            return <strong key={pIdx} className="font-bold text-slate-900 dark:text-white">{part.slice(2, -2)}</strong>;
           }
           if (part.startsWith('`') && part.endsWith('`')) {
-            return <code key={pIdx} className="px-1.5 py-0.5 rounded bg-zinc-900 font-mono text-[10px] border border-zinc-800 text-purple-300">{part.slice(1, -1)}</code>;
+            return <code key={pIdx} className="px-1.5 py-0.5 rounded font-mono text-[10px] border bg-slate-100 dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 text-purple-600 dark:text-purple-300">{part.slice(1, -1)}</code>;
           }
           return part;
         });
@@ -427,32 +452,32 @@ User prompt / follow-up:
       const trimmed = line.trim();
       if (trimmed.startsWith('# ')) {
         renderedElements.push(
-          <h1 key={index} className="text-sm font-bold text-white mt-4 mb-2 border-b border-zinc-800/60 pb-1">
+          <h1 key={index} className="text-base font-bold text-slate-900 dark:text-white mt-4 mb-2 border-b border-slate-200 dark:border-zinc-800/80 pb-1 font-mono">
             {processInline(trimmed.substring(2))}
           </h1>
         );
       } else if (trimmed.startsWith('## ')) {
         renderedElements.push(
-          <h2 key={index} className="text-xs font-bold text-zinc-200 mt-3 mb-1.5">
+          <h2 key={index} className="text-sm font-bold text-slate-855 dark:text-zinc-200 mt-3 mb-1.5 font-mono">
             {processInline(trimmed.substring(3))}
           </h2>
         );
       } else if (trimmed.startsWith('### ')) {
         renderedElements.push(
-          <h3 key={index} className="text-[11px] font-semibold text-zinc-300 mt-2 mb-1">
+          <h3 key={index} className="text-xs font-semibold text-slate-750 dark:text-zinc-300 mt-2.5 mb-1 font-mono">
             {processInline(trimmed.substring(4))}
           </h3>
         );
       } else if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
         const content = trimmed.substring(2);
         renderedElements.push(
-          <li key={index} className="list-disc list-inside ml-2.5 my-0.5 leading-relaxed text-[10px] text-zinc-400">
+          <li key={index} className="list-disc list-inside ml-3 my-0.5 leading-relaxed text-[11px] text-slate-650 dark:text-zinc-400">
             {processInline(content)}
           </li>
         );
       } else if (trimmed) {
         renderedElements.push(
-          <p key={index} className="my-1.5 leading-relaxed text-[10px] text-zinc-350">
+          <p key={index} className="my-1.5 leading-relaxed text-[11px] text-slate-755 dark:text-zinc-300">
             {processInline(line)}
           </p>
         );
@@ -724,47 +749,88 @@ User prompt / follow-up:
               <div className="flex-1 flex flex-col min-h-0 select-none">
                 <div className="flex-1 overflow-y-auto space-y-3 pr-1 pb-3 scrollbar-thin select-text min-h-[220px]">
                   {aiHistory.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center space-y-4 py-8 select-none">
+                    <div className="h-full flex flex-col items-center justify-center text-center space-y-3 py-6 select-none">
                       <Sparkles className="h-8 w-8 text-purple-400 animate-pulse" />
                       <div className="space-y-1">
                         <h4 className="text-xs font-bold font-mono">Component Diagnostic Engine</h4>
-                        <p className={`text-[10px] max-w-[200px] leading-relaxed ${isDark ? 'text-zinc-500' : 'text-slate-400'}`}>
-                          Click below to audit this component's ports, config, and console logs.
+                        <p className={`text-[9px] max-w-[220px] leading-relaxed ${isDark ? 'text-zinc-500' : 'text-slate-500'}`}>
+                          Audit this component's ports, config, and console logs. Choose an action chip below:
                         </p>
                       </div>
-                      <button
-                        onClick={() => runAiDiagnostics()}
-                        className="py-1.5 px-4 rounded-full text-[10px] font-bold text-white bg-purple-500 hover:bg-purple-600 transition-all shadow-md shadow-purple-500/10 cursor-pointer"
-                      >
-                        Run AI Diagnostics
-                      </button>
+                      <div className="w-full space-y-1.5 pt-2">
+                        {getNodeChips().map((chip, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => runAiDiagnostics(chip.prompt)}
+                            className={`w-full text-left px-3 py-2 border rounded-xl text-[10px] font-medium leading-normal transition-all hover:scale-[1.01] hover:shadow-md cursor-pointer ${
+                              isDark
+                                ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:text-white'
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-purple-700 hover:border-purple-200'
+                            }`}
+                          >
+                            {chip.text}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => runAiDiagnostics()}
+                          className="w-full py-1.5 rounded-xl text-[10px] font-bold text-white bg-purple-500 hover:bg-purple-600 transition-all shadow-md shadow-purple-500/10 cursor-pointer text-center"
+                        >
+                          Run Full Diagnostics
+                        </button>
+                      </div>
                     </div>
                   ) : (
-                    aiHistory.map((msg, idx) => (
-                      <div
-                        key={idx}
-                        className={`flex flex-col space-y-1 ${
-                          msg.role === 'user' ? 'items-end' : 'items-start'
-                        }`}
-                      >
-                        <span className={`text-[8px] font-mono font-bold uppercase tracking-wider ${isDark ? 'text-zinc-600' : 'text-slate-400'}`}>
-                          {msg.role === 'user' ? 'You' : 'Gemini Architect'}
-                        </span>
+                    <>
+                      {aiHistory.map((msg, idx) => (
                         <div
-                          className={`p-3 rounded-2xl max-w-[90%] text-xs border ${
-                            msg.role === 'user'
-                              ? (isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-200' : 'bg-slate-100 border-slate-200 text-slate-800')
-                              : (isDark ? 'bg-purple-950/20 border-purple-900/30 text-zinc-150' : 'bg-purple-50/50 border-purple-100 text-slate-850')
+                          key={idx}
+                          className={`flex flex-col space-y-1 ${
+                            msg.role === 'user' ? 'items-end' : 'items-start'
                           }`}
                         >
-                          {msg.role === 'user' ? (
-                            <p className="whitespace-pre-wrap select-text text-[10px] font-sans">{msg.text}</p>
-                          ) : (
-                            formatMarkdown(msg.text)
-                          )}
+                          <span className={`text-[8px] font-mono font-bold uppercase tracking-wider ${isDark ? 'text-zinc-600' : 'text-slate-400'}`}>
+                            {msg.role === 'user' ? 'You' : 'Gemini Architect'}
+                          </span>
+                          <div
+                            className={`p-3 rounded-2xl max-w-[90%] text-xs border ${
+                              msg.role === 'user'
+                                ? (isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-200' : 'bg-slate-100 border-slate-200 text-slate-800')
+                                : (isDark ? 'bg-purple-950/20 border-purple-900/30 text-zinc-200' : 'bg-purple-50/45 border-purple-100 text-slate-800')
+                            }`}
+                          >
+                            {msg.role === 'user' ? (
+                              <p className="whitespace-pre-wrap select-text text-[10px] font-sans">{msg.text}</p>
+                            ) : (
+                              formatMarkdown(msg.text)
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      ))}
+
+                      {/* Follow-up Quick Action Chips */}
+                      {!aiLoading && (
+                        <div className="pt-2 space-y-1.5 select-none">
+                          <span className={`text-[8px] font-mono font-bold uppercase tracking-wider ${isDark ? 'text-zinc-600' : 'text-slate-400'}`}>
+                            Suggested Follow-up
+                          </span>
+                          <div className="flex flex-col gap-1.5">
+                            {getNodeChips().slice(0, 2).map((chip, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => runAiDiagnostics(chip.prompt)}
+                                className={`text-left px-3 py-1.5 rounded-xl border text-[9px] font-semibold transition-all hover:scale-[1.01] cursor-pointer shadow-sm ${
+                                  isDark
+                                    ? 'bg-zinc-900 border-zinc-800 text-purple-300 hover:bg-zinc-800 hover:text-white'
+                                    : 'bg-purple-50/50 border-purple-100 text-purple-700 hover:bg-purple-100 hover:border-purple-300'
+                                }`}
+                              >
+                                {chip.text}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {aiLoading && (
@@ -773,7 +839,7 @@ User prompt / follow-up:
                         Gemini Architect
                       </span>
                       <div className={`p-3 rounded-2xl border flex items-center space-x-2 ${
-                        isDark ? 'bg-purple-950/20 border-purple-900/30 text-zinc-100' : 'bg-purple-50/50 border-purple-100 text-slate-850'
+                        isDark ? 'bg-purple-950/20 border-purple-900/30 text-zinc-100' : 'bg-purple-50/45 border-purple-100 text-slate-800'
                       }`}>
                         <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                         <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />

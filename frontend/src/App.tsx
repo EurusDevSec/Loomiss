@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ReactFlow, Background, Controls } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useGraphStore } from './store/useGraphStore';
-import { Activity, Radio, AlertTriangle, Play, RefreshCw, Sun, Moon, Brain, Send, ShieldAlert, X } from 'lucide-react';
+import { Activity, Radio, AlertTriangle, Play, RefreshCw, Sun, Moon, Brain, Send, ShieldAlert, X, Plus, ArrowLeft } from 'lucide-react';
 import ArchitectureNode from './components/ArchitectureNode';
 import GroupNode from './components/GroupNode';
 import TrafficEdge from './components/TrafficEdge';
@@ -622,72 +622,277 @@ User prompt / query:
         {selectedNodeId && <DetailDrawer />}
       </div>
 
-      {/* Global AI Audit Overlay Modal */}
+      {/* Global AI Audit Full Screen Workspace */}
       {isAuditModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm select-none">
-          <div className={`w-full max-w-2xl h-[80vh] border rounded-2xl flex flex-col overflow-hidden shadow-2xl transition-all ${
+        <div className={`fixed inset-0 z-50 flex transition-colors duration-300 select-none ${
+          theme === 'dark'
+            ? 'bg-gradient-to-br from-slate-900 via-zinc-900 to-indigo-950 text-zinc-100'
+            : 'bg-gradient-to-br from-slate-50 via-white to-purple-50 text-slate-900'
+        }`}>
+          {/* Left Navigation Sidebar (Amazon Q style) */}
+          <aside className={`w-64 border-r flex flex-col justify-between p-4 shrink-0 transition-all select-none ${
             theme === 'dark'
-              ? 'bg-zinc-950/95 border-zinc-900 text-zinc-100'
-              : 'bg-white/95 border-slate-200 text-slate-900'
+              ? 'bg-slate-900/70 border-white/5 backdrop-blur-sm'
+              : 'bg-white/80 border-slate-200 shadow-sm backdrop-blur-sm'
           }`}>
-            {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800/80 shrink-0">
-              <div className="flex items-center space-x-2.5">
-                <ShieldAlert className="h-5 w-5 text-purple-400" />
+            <div className="flex flex-col space-y-4 min-h-0 flex-1">
+              {/* Header Info */}
+              <div className="flex items-center space-x-2.5 px-1 shrink-0">
+                <ShieldAlert className="h-5 w-5 text-purple-400 animate-pulse" />
                 <div>
-                  <h3 className="text-sm font-bold font-mono">Loomiss AI Architect Audit</h3>
-                  <p className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-slate-500'}`}>Global Security & System Design Audit Report</p>
+                  <h3 className="text-xs font-bold font-mono uppercase tracking-wider">Loomiss Q</h3>
+                  <p className={`text-[9px] font-mono ${theme === 'dark' ? 'text-zinc-500' : 'text-slate-400'}`}>AI Architect Console</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
-                {auditHistory.length > 0 && !auditLoading && (
-                  <button
-                    onClick={() => {
-                      setAuditHistory([]);
-                      setVulnerabilities([]); // clear old visual highlights
-                      runGlobalAudit();
-                    }}
-                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all flex items-center space-x-1 hover:scale-[1.02] cursor-pointer ${
-                      theme === 'dark'
-                        ? 'bg-zinc-900 border-zinc-800 text-purple-300 hover:bg-zinc-800'
-                        : 'bg-slate-100 border-slate-200 text-purple-600 hover:bg-slate-200'
-                    }`}
-                    title="Run a fresh new global audit"
-                  >
-                    <RefreshCw className="w-3 h-3" />
-                    <span>Re-run Audit</span>
-                  </button>
-                )}
-                <button
-                  onClick={() => setIsAuditModalOpen(false)}
-                  className={`p-1.5 border rounded-lg transition-all ${
+
+              {/* Action Button */}
+              <button
+                onClick={() => {
+                  setAuditHistory([]);
+                  setVulnerabilities([]); // clear old visual highlights
+                  runGlobalAudit();
+                }}
+                className={`w-full flex items-center justify-center space-x-2 py-2.5 px-3 rounded-xl text-[10px] font-bold border transition-all hover:scale-[1.01] hover:shadow-md cursor-pointer shrink-0 ${
+                  theme === 'dark'
+                    ? 'bg-purple-950/20 border-purple-800/40 text-purple-300 hover:bg-purple-900/30'
+                    : 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100'
+                }`}
+                title="Reset conversation and run a fresh audit"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>New Audit Chat</span>
+              </button>
+
+              <div className="h-px bg-zinc-200 dark:bg-zinc-855 shrink-0" />
+
+              {/* Menu Options & Settings */}
+              <div className="flex-1 overflow-y-auto space-y-5 pr-1 scrollbar-none">
+                {/* Active Tab */}
+                <div className="space-y-1">
+                  <div className={`px-2.5 py-2 rounded-xl text-[11px] font-bold flex items-center space-x-2 select-none border transition-all ${
                     theme === 'dark'
-                      ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-                      : 'bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                      ? 'bg-purple-950/20 border-purple-900/30 text-purple-300'
+                      : 'bg-purple-50/50 border-purple-100 text-purple-700 shadow-sm'
+                  }`}>
+                    <Brain className="w-3.5 h-3.5" />
+                    <span>🛡️ Global Security Audit</span>
+                  </div>
+                  <div className={`px-2.5 py-1 text-[9px] leading-normal font-sans ${
+                    theme === 'dark' ? 'text-zinc-500' : 'text-slate-500'
+                  }`}>
+                    💡 Pro tip: Close this console and click any component on the visualizer canvas to inspect localized logs and metrics.
+                  </div>
+                </div>
+
+                <div className="h-px bg-zinc-200 dark:bg-zinc-855" />
+
+                {/* Visual Settings Controls (moved to sidebar) */}
+                <div className="space-y-4">
+                  {/* Auto Layout Direction */}
+                  <div className="flex flex-col space-y-1.5">
+                    <label className={`text-[9px] font-bold uppercase font-mono tracking-wider ${theme === 'dark' ? 'text-zinc-500' : 'text-slate-500'}`}>Auto Layout Direction</label>
+                    <div className={`grid grid-cols-2 gap-1 p-0.5 rounded-lg border transition-all ${
+                      theme === 'dark' ? 'bg-zinc-950 border-zinc-900' : 'bg-slate-100 border-slate-200'
+                    }`}>
+                      <button
+                        onClick={() => setDirection('TB')}
+                        className={`py-1 text-[9px] font-mono font-bold rounded transition-all cursor-pointer ${
+                          direction === 'TB'
+                            ? (theme === 'dark' ? 'bg-zinc-800 text-cyan-400 border border-zinc-700/50' : 'bg-white text-cyan-600 border border-slate-200 shadow-sm')
+                            : (theme === 'dark' ? 'text-zinc-600 hover:text-zinc-400' : 'text-slate-500 hover:text-slate-700')
+                        }`}
+                      >
+                        Vertical
+                      </button>
+                      <button
+                        onClick={() => setDirection('LR')}
+                        className={`py-1 text-[9px] font-mono font-bold rounded transition-all cursor-pointer ${
+                          direction === 'LR'
+                            ? (theme === 'dark' ? 'bg-zinc-800 text-cyan-400 border border-zinc-700/50' : 'bg-white text-cyan-600 border border-slate-200 shadow-sm')
+                            : (theme === 'dark' ? 'text-zinc-600 hover:text-zinc-400' : 'text-slate-500 hover:text-slate-700')
+                        }`}
+                      >
+                        Horizontal
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Theme toggler */}
+                  <div className="flex flex-col space-y-1.5">
+                    <label className={`text-[9px] font-bold uppercase font-mono tracking-wider ${theme === 'dark' ? 'text-zinc-500' : 'text-slate-500'}`}>Visual Theme</label>
+                    <div className={`grid grid-cols-2 gap-1 p-0.5 rounded-lg border transition-all ${
+                      theme === 'dark' ? 'bg-zinc-950 border-zinc-900' : 'bg-slate-100 border-slate-200'
+                    }`}>
+                      <button
+                        onClick={() => setTheme('light')}
+                        className={`py-1 text-[9px] font-mono font-bold rounded flex items-center justify-center space-x-1 transition-all cursor-pointer ${
+                          theme === 'light'
+                            ? 'bg-white text-cyan-600 border border-slate-200 shadow-sm'
+                            : 'text-zinc-650 hover:text-zinc-400'
+                        }`}
+                      >
+                        <Sun className="h-3 w-3" />
+                        <span>Light</span>
+                      </button>
+                      <button
+                        onClick={() => setTheme('dark')}
+                        className={`py-1 text-[9px] font-mono font-bold rounded flex items-center justify-center space-x-1 transition-all cursor-pointer ${
+                          theme === 'dark'
+                            ? 'bg-zinc-800 text-cyan-400 border border-zinc-700/50'
+                            : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                      >
+                        <Moon className="h-3 w-3" />
+                        <span>Dark</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Simulate Edit Button */}
+                  <div className="flex flex-col space-y-1.5">
+                    <label className={`text-[9px] font-bold uppercase font-mono tracking-wider ${theme === 'dark' ? 'text-zinc-550' : 'text-slate-500'}`}>Simulate Edit</label>
+                    <button
+                      onClick={triggerSimulation}
+                      className={`w-full flex items-center justify-center space-x-1.5 py-1.5 px-2 rounded-lg text-[9px] font-semibold border transition-all hover:scale-[1.01] cursor-pointer shadow-sm ${
+                        theme === 'dark'
+                          ? 'bg-zinc-950 border-zinc-900 text-cyan-300 hover:bg-zinc-800'
+                          : 'bg-white border-slate-200 text-cyan-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Play className="h-3 w-3" />
+                      <span>Simulate Edit</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
+            {/* Bottom Actions & API Key controls */}
+            <div className="pt-4 border-t border-zinc-200 dark:border-zinc-850 space-y-3 shrink-0">
+              <div className="flex items-center justify-between text-[9px] font-mono">
+                <span className={theme === 'dark' ? 'text-zinc-655' : 'text-slate-400'}>Gemini Q Active</span>
+                <button
+                  onClick={() => setGeminiApiKey(null)}
+                  className="text-red-400 hover:underline cursor-pointer font-bold"
+                >
+                  Clear key
+                </button>
+              </div>
+              <button
+                onClick={() => setIsAuditModalOpen(false)}
+                className={`w-full flex items-center justify-center space-x-1.5 py-2.5 px-3 rounded-xl text-[10px] font-bold border transition-all hover:scale-[1.01] hover:shadow-md cursor-pointer ${
+                  theme === 'dark'
+                    ? 'bg-zinc-800 border-zinc-700 text-zinc-200 hover:bg-zinc-750 hover:text-white'
+                    : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
+                }`}
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Visualizer</span>
+              </button>
+            </div>
+          </aside>
+
+          {/* Right Main Audit Chat Workspace */}
+          <main className="flex-1 flex flex-col min-h-0 bg-transparent">
+            {/* Header Status Bar */}
+            <div className={`flex items-center justify-between p-4 border-b shrink-0 ${
+              theme === 'dark'
+                ? 'bg-slate-900/60 border-white/5 text-zinc-100 backdrop-blur-sm'
+                : 'bg-white/70 border-slate-200 text-slate-900 shadow-sm backdrop-blur-sm'
+            }`}>
+              <div className="flex items-center space-x-2.5">
+                <ShieldAlert className="h-5 w-5 text-purple-400" />
+                <div>
+                  <h3 className="text-sm font-bold font-mono">Loomiss AI Security & Design Audit</h3>
+                  <p className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-slate-500'}`}>Global Security & System Design Audit Report</p>
+                </div>
+              </div>
+              {auditHistory.length > 0 && !auditLoading && (
+                <button
+                  onClick={() => {
+                    setAuditHistory([]);
+                    setVulnerabilities([]); // clear old visual highlights
+                    runGlobalAudit();
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all flex items-center space-x-1 hover:scale-[1.02] cursor-pointer ${
+                    theme === 'dark'
+                      ? 'bg-zinc-900 border-zinc-800 text-purple-300 hover:bg-zinc-800'
+                      : 'bg-slate-100 border-slate-200 text-purple-600 hover:bg-slate-200'
+                  }`}
+                  title="Run a fresh new global audit"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>Re-run Audit</span>
+                </button>
+              )}
+            </div>
+
             {/* Modal Conversation / Report Stream */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin select-text">
+            <div className="flex-1 overflow-y-auto p-6 space-y-5 scrollbar-thin select-text">
+              {/* Context Status Indicator */}
+              <div className={`p-2.5 rounded-xl border flex items-center justify-between text-[10px] font-mono select-none ${
+                theme === 'dark'
+                  ? 'bg-white/5 border-white/10 text-zinc-400 backdrop-blur-sm'
+                  : 'bg-white/70 border-slate-200 text-slate-500'
+              }`}>
+                <div className="flex items-center space-x-1.5">
+                  <Radio className="h-3 w-3 text-purple-400 animate-pulse" />
+                  <span>Context:</span>
+                </div>
+                <div className="flex space-x-1.5 font-bold">
+                  <span className="px-1.5 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400">📦 Configs</span>
+                  <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-600 dark:text-cyan-400">📊 Telemetry</span>
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400">📝 Code</span>
+                </div>
+              </div>
+
+              {auditHistory.length === 0 && !auditLoading && (
+                <div className="space-y-5 py-6">
+                  <div className="text-center space-y-2 select-none">
+                    <Brain className="h-9 w-9 text-purple-400 mx-auto animate-pulse" />
+                    <h4 className="text-sm font-bold font-mono">Global Architecture Diagnostic Engine</h4>
+                    <p className={`text-[10px] max-w-[340px] mx-auto leading-relaxed ${theme === 'dark' ? 'text-zinc-555' : 'text-slate-500'}`}>
+                      Select an architecture component diagnostic quick action below or ask a custom prompt in the input.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl mx-auto">
+                    {[
+                      { text: '🛡️ Audit database port exposure', prompt: 'Perform a deep security audit specifically on the database and public port mappings. Suggest detailed mitigation steps.' },
+                      { text: '🔒 Verify TLS reverse proxy config', prompt: 'Check reverse proxy TLS and gateway settings. How can we configure TLS for Nginx?' },
+                      { text: '🐳 Check Docker Compose design', prompt: 'Analyze docker-compose.yml design. What container orchestration best practices can be applied?' },
+                      { text: '📈 Inspect metrics telemetry anomalies', prompt: 'Review recent CPU/RAM telemetry metrics. Explain potential latency or utilization anomalies.' }
+                    ].map((chip, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => runGlobalAudit(chip.prompt)}
+                        className={`text-left p-3.5 rounded-xl border text-[11px] font-medium leading-normal transition-all hover:scale-[1.01] hover:shadow-md cursor-pointer ${
+                          theme === 'dark'
+                            ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800/80 hover:text-white'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-purple-700 hover:border-purple-200'
+                        }`}
+                      >
+                        {chip.text}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {auditHistory.map((msg, idx) => (
                 <div
                   key={idx}
                   className={`flex flex-col space-y-1.5 ${
                     msg.role === 'user' ? 'items-end' : 'items-start'
-                  }`}
+                  } max-w-4xl mx-auto`}
                 >
-                  <span className={`text-[8px] font-mono font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-550' : 'text-slate-400'}`}>
+                  <span className={`text-[8px] font-mono font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-555' : 'text-slate-400'}`}>
                     {msg.role === 'user' ? 'You' : 'AI Architect Advisor'}
                   </span>
                   <div
-                    className={`p-4 rounded-2xl max-w-[90%] text-xs border leading-relaxed ${
+                    className={`p-5 rounded-2xl max-w-[90%] text-xs border leading-relaxed ${
                       msg.role === 'user'
                         ? (theme === 'dark' ? 'bg-zinc-900 border-zinc-800 text-zinc-200' : 'bg-slate-100 border-slate-200 text-slate-800')
-                        : (theme === 'dark' ? 'bg-purple-950/15 border-purple-900/25 text-zinc-150' : 'bg-purple-50/40 border-purple-100 text-slate-850')
+                        : (theme === 'dark' ? 'bg-purple-950/15 border-purple-900/25 text-zinc-200' : 'bg-purple-50/45 border-purple-100 text-slate-800')
                     }`}
                   >
                     {msg.role === 'user' ? (
@@ -700,12 +905,12 @@ User prompt / query:
               ))}
 
               {auditLoading && (
-                <div className="flex flex-col items-start space-y-1.5">
+                <div className="flex flex-col items-start space-y-1.5 max-w-4xl mx-auto">
                   <span className={`text-[8px] font-mono font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-600' : 'text-slate-400'}`}>
                     AI Architect Advisor
                   </span>
                   <div className={`p-4 rounded-2xl border flex items-center space-x-2 ${
-                    theme === 'dark' ? 'bg-purple-950/15 border-purple-900/25 text-zinc-100' : 'bg-purple-50/40 border-purple-100 text-slate-850'
+                    theme === 'dark' ? 'bg-purple-950/15 border-purple-900/25 text-zinc-100' : 'bg-purple-50/45 border-purple-100 text-slate-800'
                   }`}>
                     <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                     <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -713,43 +918,77 @@ User prompt / query:
                   </div>
                 </div>
               )}
+
+              {/* Follow-up Quick Action Chips */}
+              {auditHistory.length > 0 && !auditLoading && (
+                <div className="pt-2 space-y-1.5 select-none max-w-4xl mx-auto">
+                  <span className={`text-[8px] font-mono font-bold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-550' : 'text-slate-400'}`}>
+                    Suggested follow-up questions
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { text: '🛡️ Mitigate Exposed Ports', prompt: 'Provide a step-by-step mitigation plan to resolve the exposed database port 8888 and Nginx reverse proxy ports.' },
+                      { text: '🔒 Configure Nginx TLS/SSL', prompt: 'Generate the exact SSL configuration snippet and certbot integration instructions for our Nginx reverse proxy.' },
+                      { text: '🐳 Setup Docker Private Network', prompt: 'Show me the updated docker-compose.yml configuration with a private network driver mapping database and backend services privately.' }
+                    ].map((chip, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => runGlobalAudit(chip.prompt)}
+                        className={`px-3 py-1.5 rounded-full border text-[10px] font-semibold transition-all hover:scale-[1.02] cursor-pointer shadow-sm ${
+                          theme === 'dark'
+                            ? 'bg-zinc-900 border-zinc-800 text-purple-300 hover:bg-zinc-800 hover:text-white'
+                            : 'bg-purple-50/50 border-purple-100 text-purple-700 hover:bg-purple-100 hover:border-purple-300'
+                        }`}
+                      >
+                        {chip.text}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Modal Input Footer */}
-            <div className="p-4 border-t border-zinc-200 dark:border-zinc-800/80 flex items-center space-x-2 shrink-0 select-none">
-              <input
-                type="text"
-                placeholder="Ask the AI Architect about design modifications, scaling, or vulnerabilities..."
-                value={auditInput}
-                onChange={(e) => setAuditInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && auditInput.trim() && !auditLoading) {
-                    runGlobalAudit(auditInput.trim());
-                  }
-                }}
-                className={`flex-1 px-3 py-2 text-xs font-sans border rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-400 transition-all ${
-                  theme === 'dark'
-                    ? 'bg-zinc-950 border-zinc-900 text-zinc-100'
-                    : 'bg-slate-50 border-slate-200 text-slate-900'
-                }`}
-              />
-              <button
-                onClick={() => {
-                  if (auditInput.trim() && !auditLoading) {
-                    runGlobalAudit(auditInput.trim());
-                  }
-                }}
-                disabled={!auditInput.trim() || auditLoading}
-                className={`p-2 border rounded-lg transition-all ${
-                  auditInput.trim() && !auditLoading
-                    ? 'bg-purple-500 hover:bg-purple-600 border-purple-400 text-white cursor-pointer shadow-sm shadow-purple-500/10'
-                    : (theme === 'dark' ? 'bg-zinc-900 border-zinc-800 text-zinc-600' : 'bg-slate-100 border-slate-200 text-slate-300')
-                }`}
-              >
-                <Send className="w-4 h-4" />
-              </button>
+            <div className={`p-4 border-t flex items-center justify-center shrink-0 select-none backdrop-blur-md ${
+              theme === 'dark'
+                ? 'border-white/10 bg-slate-900/50'
+                : 'border-slate-200 bg-white/60'
+            }`}>
+              <div className="flex items-center space-x-2 w-full max-w-4xl">
+                <input
+                  type="text"
+                  placeholder="Ask the AI Architect about design modifications, scaling, or vulnerabilities..."
+                  value={auditInput}
+                  onChange={(e) => setAuditInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && auditInput.trim() && !auditLoading) {
+                      runGlobalAudit(auditInput.trim());
+                    }
+                  }}
+                  className={`flex-1 px-4 py-2.5 text-xs font-sans border rounded-xl focus:outline-none focus:ring-1 focus:ring-purple-400/60 transition-all placeholder:text-zinc-600 dark:placeholder:text-zinc-600 ${
+                    theme === 'dark'
+                      ? 'bg-white/8 border-white/10 text-zinc-100 backdrop-blur-sm'
+                      : 'bg-white/80 border-slate-200 text-slate-900'
+                  }`}
+                />
+                <button
+                  onClick={() => {
+                    if (auditInput.trim() && !auditLoading) {
+                      runGlobalAudit(auditInput.trim());
+                    }
+                  }}
+                  disabled={!auditInput.trim() || auditLoading}
+                  className={`p-2.5 border rounded-xl transition-all ${
+                    auditInput.trim() && !auditLoading
+                      ? 'bg-purple-500 hover:bg-purple-600 border-purple-400 text-white cursor-pointer shadow-lg shadow-purple-500/20'
+                      : (theme === 'dark' ? 'bg-white/5 border-white/10 text-zinc-600' : 'bg-slate-100 border-slate-200 text-slate-300')
+                  }`}
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-          </div>
+          </main>
         </div>
       )}
     </div>

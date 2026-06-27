@@ -6,9 +6,21 @@ import (
 	"loomiss/daemon"
 	"loomiss/mcp"
 	"os"
+	"strings"
 )
 
 func main() {
+	// Tự động chuyển thư mục làm việc lên thư mục cha nếu đang chạy trong thư mục backend
+	cwd, err := os.Getwd()
+	if err == nil {
+		if strings.HasSuffix(cwd, "backend") || strings.HasSuffix(cwd, "backend\\") || strings.HasSuffix(cwd, "backend/") {
+			if _, err := os.Stat("../docker-compose.yml"); err == nil {
+				fmt.Println("[Loomiss] Phát hiện đang chạy từ thư mục backend. Tự động chuyển thư mục làm việc lên thư mục cha...")
+				_ = os.Chdir("..")
+			}
+		}
+	}
+
 	// Khai báo các flags
 	portFlag := flag.Int("port", 18900, "Port to run the Loomiss Web Server")
 	flag.Parse()
