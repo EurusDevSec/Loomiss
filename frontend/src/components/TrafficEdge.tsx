@@ -22,6 +22,31 @@ export default function TrafficEdge({
   let labelX = 0;
   let labelY = 0;
 
+  // Normalize relative coordinates to absolute canvas values and filter out group nodes so pathfinder doesn't block internal paths
+  const absoluteNodes = nodes
+    .filter(node => node.type !== 'group')
+    .map(node => {
+      if (node.parentId) {
+        let offsetX = 0;
+        let offsetY = 0;
+        let parent = nodes.find(n => n.id === node.parentId);
+        while (parent) {
+          offsetX += parent.position.x;
+          offsetY += parent.position.y;
+          const pId = parent.parentId;
+          parent = pId ? nodes.find(n => n.id === pId) : undefined;
+        }
+        return {
+          ...node,
+          position: {
+            x: node.position.x + offsetX,
+            y: node.position.y + offsetY
+          }
+        };
+      }
+      return node;
+    });
+
   const smartEdgeResult = getSmartEdge({
     sourcePosition,
     targetPosition,
@@ -29,7 +54,11 @@ export default function TrafficEdge({
     sourceY,
     targetX,
     targetY,
-    nodes,
+    nodes: absoluteNodes,
+    options: {
+      nodePadding: 16,
+      gridRatio: 10
+    }
   });
 
   if (smartEdgeResult && !(smartEdgeResult instanceof Error)) {
