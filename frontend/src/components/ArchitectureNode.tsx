@@ -86,6 +86,7 @@ export default function ArchitectureNode({ id, data, targetPosition, sourcePosit
 
   let nodeBorderColor = data.borderClr;
   if (data.activeAgentNode) nodeBorderColor = '#22c55e';
+  else if (data.status === 'OFFLINE') nodeBorderColor = '#ef4444';
   else if (isDiffAdd) nodeBorderColor = '#22c55e';
   else if (isDiffDelete) nodeBorderColor = '#ef4444';
   else if (isCpuSpike) nodeBorderColor = '#ef4444';
@@ -97,6 +98,8 @@ export default function ArchitectureNode({ id, data, targetPosition, sourcePosit
 
   if (data.activeAgentNode) {
     nodeBoxShadow = '0 0 25px rgba(34, 197, 150, 0.6)';
+  } else if (data.status === 'OFFLINE') {
+    nodeBoxShadow = '0 0 22px rgba(239, 68, 68, 0.55)';
   } else if (isDiffAdd) {
     nodeBoxShadow = '0 0 20px rgba(34, 197, 94, 0.5)';
   } else if (isDiffDelete) {
@@ -110,12 +113,13 @@ export default function ArchitectureNode({ id, data, targetPosition, sourcePosit
   }
 
   const nodeOpacity = isDiffDelete ? 0.5 : 1;
+  const isOffline = data.status === 'OFFLINE';
 
   return (
     <div
       className={`p-3 rounded-xl border-2 w-[240px] text-left transition-all duration-300 select-none relative ${
         data.activeAgentNode ? 'animate-ripple' : ''
-      } ${isGhost ? 'border-dashed' : ''} ${
+      } ${isOffline ? 'animate-pulse' : ''} ${isGhost ? 'border-dashed' : ''} ${
         theme === 'dark' ? 'backdrop-blur-md' : 'shadow-md shadow-slate-100'
       }`}
       style={{
@@ -132,11 +136,21 @@ export default function ArchitectureNode({ id, data, targetPosition, sourcePosit
         className="!bg-zinc-400 !w-2.5 !h-2.5 !border-zinc-950 hover:!bg-cyan-400 transition-colors"
       />
 
+      {/* OFFLINE Badge */}
+      {isOffline && (
+        <div 
+          className="absolute -top-3 -left-2 px-2 py-0.5 rounded-full text-[9px] font-bold font-mono border shadow-md flex items-center space-x-1 pointer-events-none select-none z-10 animate-pulse bg-red-500/20 border-red-500/40 text-red-500"
+        >
+          <span>🔴 OFFLINE</span>
+        </div>
+      )}
+
       {/* Vulnerability Alert Badge */}
       {nodeVuln && (
         <div 
-          className="absolute -top-3 -left-2 px-2 py-0.5 rounded-full text-[9px] font-bold font-mono border shadow-md flex items-center space-x-1 pointer-events-none select-none z-10 animate-pulse"
+          className="absolute -top-3 px-2 py-0.5 rounded-full text-[9px] font-bold font-mono border shadow-md flex items-center space-x-1 pointer-events-none select-none z-10 animate-pulse"
           style={{
+            left: isOffline ? '72px' : '-8px',
             backgroundColor: nodeVuln.severity === 'HIGH' ? 'rgba(239, 68, 68, 0.18)' : 'rgba(245, 158, 11, 0.18)',
             borderColor: nodeVuln.severity === 'HIGH' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(245, 158, 11, 0.4)',
             color: nodeVuln.severity === 'HIGH' ? '#ef4444' : '#f59e0b',

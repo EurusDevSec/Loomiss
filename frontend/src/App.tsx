@@ -36,6 +36,11 @@ export default function App() {
     setGeminiApiKey,
     setVulnerabilities,
     selectedNodeId,
+    historicMode,
+    historicCommit,
+    setHistoricMode,
+    routingTrace,
+    setRoutingTrace,
   } = useGraphStore();
 
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
@@ -43,11 +48,42 @@ export default function App() {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditInput, setAuditInput] = useState('');
 
+  const [commits, setCommits] = useState<{ hash: string; message: string }[]>([]);
+  const [selectedCommitIndex, setSelectedCommitIndex] = useState(0);
+
   // Khởi động kết nối WebSocket và tải sơ đồ thực tế khi Component Mount
   useEffect(() => {
     fetchGraph();
     connectWebSocket();
   }, [fetchGraph, connectWebSocket]);
+
+  // Tải lịch sử Git commits để Time Travel
+  useEffect(() => {
+    const fetchCommits = async () => {
+      try {
+        const response = await fetch('/api/git/commits');
+        if (response.ok) {
+          const data = await response.json();
+          setCommits(data || []);
+        }
+      } catch (err) {
+        console.warn('Failed to load commits history:', err);
+      }
+    };
+    fetchCommits();
+  }, []);
+
+  const handleCommitChange = async (index: number) => {
+    setSelectedCommitIndex(index);
+    if (index === 0) {
+      setHistoricMode(false, 'active');
+      await fetchGraph('active');
+    } else {
+      const commit = commits[index - 1];
+      setHistoricMode(true, commit.hash);
+      await fetchGraph(commit.hash);
+    }
+  };
 
   // Hàm mô phỏng kích hoạt hiệu ứng AI Agent đang sửa database
   const triggerSimulation = () => {
@@ -55,6 +91,28 @@ export default function App() {
     setTimeout(() => {
       setActiveAgentNode(null);
     }, 4000);
+  };
+
+  // Hàm mô phỏng gói tin chạy định tuyến Sandbox (Phase 6)
+  const startRouteSimulation = () => {
+    // Tìm các cạnh nginx -> app -> db
+    const trace = ['nginx-app', 'app-db', 'nginx-ghost-8080'];
+    setRoutingTrace(trace);
+
+    // Active nhấp nháy từng node theo thứ tự gói tin đi qua
+    setActiveAgentNode('nginx');
+    setTimeout(() => {
+      setActiveAgentNode('app');
+    }, 1500);
+    setTimeout(() => {
+      setActiveAgentNode('db');
+    }, 3000);
+
+    // Kết thúc reset trạng thái
+    setTimeout(() => {
+      setActiveAgentNode(null);
+      setRoutingTrace([]);
+    }, 4500);
   };
 
   const buildArchitectureSummary = () => {
@@ -367,7 +425,32 @@ User prompt / query:
       {/* Main Board Container */}
       <div className="flex-1 relative flex">
         {/* React Flow Board */}
-        <div className="flex-1 h-full">
+        <div className="flex-1 h-full relative">
+          {historicMode && (
+            <div 
+              onClick={() => handleCommitChange(0)}
+              className={`absolute top-4 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-xl border shadow-lg flex items-center space-x-2.5 z-10 cursor-pointer animate-pulse select-none transition-all text-xs font-mono ${
+                theme === 'dark'
+                  ? 'bg-amber-500/15 border-amber-500/30 text-amber-400 hover:bg-amber-500/25'
+                  : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 shadow-sm'
+              }`}
+            >
+              <span>⚠️ Viewing History at commit <strong>{historicCommit}</strong>. Click to return.</span>
+            </div>
+          )}
+
+          {routingTrace.length > 0 && (
+            <div 
+              className={`absolute ${historicMode ? 'top-16' : 'top-4'} left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-xl border shadow-lg flex items-center space-x-2.5 z-10 pointer-events-none select-none transition-all text-xs font-mono animate-pulse ${
+                theme === 'dark'
+                  ? 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400'
+                  : 'bg-yellow-50 border-yellow-200 text-yellow-700 shadow-sm'
+              }`}
+            >
+              <span>⚡ Sandbox Simulation Active: Packet tracing route...</span>
+            </div>
+          )}
+
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -389,6 +472,50 @@ User prompt / query:
             <Background color={theme === 'dark' ? '#27272a' : '#cbd5e1'} gap={16} size={1} />
             <Controls position="bottom-right" />
           </ReactFlow>
+
+          {/* Git Time Travel Slider */}
+          {commits.length > 0 && (
+            <div className={`absolute bottom-6 left-1/2 transform -translate-x-1/2 px-5 py-3 rounded-2xl border shadow-2xl flex flex-col space-y-2 z-10 w-[450px] backdrop-blur-md transition-all select-none ${
+              theme === 'dark'
+                ? 'bg-zinc-950/90 border-zinc-800 text-zinc-100'
+                : 'bg-white/90 border-slate-200 text-slate-800'
+            }`}>
+              <div className="flex items-center justify-between text-xs font-mono">
+                <div className="flex items-center space-x-1.5">
+                  <Activity className="h-3.5 w-3.5 text-purple-400 animate-pulse" />
+                  <span className="font-bold">Time Travel (Git Timeline)</span>
+                </div>
+                {selectedCommitIndex === 0 ? (
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-green-500/10 border border-green-500/20 text-green-400">
+                    🟢 Active Workspace
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-500/15 border border-purple-500/30 text-purple-400 font-mono">
+                    📜 {commits[selectedCommitIndex - 1].hash}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center space-x-3">
+                <span className="text-[10px] text-zinc-500 font-bold font-mono">Now</span>
+                <input
+                  type="range"
+                  min="0"
+                  max={commits.length}
+                  value={selectedCommitIndex}
+                  onChange={(e) => handleCommitChange(Number(e.target.value))}
+                  className="flex-1 h-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                />
+                <span className="text-[10px] text-zinc-500 font-bold font-mono">-{commits.length} commits</span>
+              </div>
+
+              <div className="text-[10px] truncate italic leading-tight text-center text-zinc-400 dark:text-zinc-500">
+                {selectedCommitIndex === 0 
+                  ? "Hiển thị cấu hình đang được chỉnh sửa trực tiếp" 
+                  : `Commit: "${commits[selectedCommitIndex - 1].message}"`}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Control and Info Panel */}
@@ -475,6 +602,17 @@ User prompt / query:
             >
               <Play className="h-3.5 w-3.5" />
               <span>Simulate AI Edit Node (DB)</span>
+            </button>
+            <button
+              onClick={startRouteSimulation}
+              className={`w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-sm ${
+                theme === 'dark'
+                  ? 'bg-gradient-to-r from-purple-950/50 to-cyan-950/50 hover:from-purple-900/60 hover:to-cyan-900/60 border border-purple-805/45 text-purple-300 hover:text-purple-200'
+                  : 'bg-gradient-to-r from-purple-50 to-cyan-50 hover:from-purple-100/80 hover:to-purple-100/80 border border-purple-200 hover:border-purple-300 text-purple-700 hover:text-purple-800'
+              }`}
+            >
+              <Activity className="h-3.5 w-3.5 animate-pulse" />
+              <span>Simulate Route Trace</span>
             </button>
           </div>
 

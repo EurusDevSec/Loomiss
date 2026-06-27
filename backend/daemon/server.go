@@ -1,14 +1,17 @@
 package daemon
 
 import (
+	"archive/tar"
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"loomiss/usecase"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -39,17 +42,33 @@ func StartServer(port int) error {
 	// Khởi chạy Metrics Streamer ở background
 	StartMetricsStreamer(hub)
 
+	// Khởi chạy Live-Shadow prober giám sát cổng TCP cục bộ ở background
+	StartLiveShadowProber(hub)
+
 	mux := http.NewServeMux()
 	
 	// Server file tĩnh
 	fileServer := http.FileServer(http.FS(subFS))
 	mux.Handle("/", fileServer)
 
-	// API trả về đồ thị phân tích thực tế của thư mục hiện tại
+	// API trả về đồ thị phân tích thực tế (chấp nhận tham số commit lịch sử)
 	mux.HandleFunc("/api/graph", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		
-		graph, err := usecase.CompileGraph(".")
+		commit := r.URL.Query().Get("commit")
+		targetPath := "."
+		var err error
+		
+		if commit != "" && commit != "active" {
+			targetPath, err = extractCommitConfigs(".", commit)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"error": "Không thể trích xuất lịch sử commit: " + err.Error()})
+				return
+			}
+		}
+		
+		graph, err := usecase.CompileGraph(targetPath)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -57,6 +76,48 @@ func StartServer(port int) error {
 		}
 		
 		json.NewEncoder(w).Encode(graph)
+	})
+
+	// API trả về danh sách 15 commits gần nhất phục vụ Time Travel
+	mux.HandleFunc("/api/git/commits", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		
+		cmd := exec.Command("git", "log", "-n", "15", "--oneline")
+		cmd.Dir = "."
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Không thể lấy lịch sử git: " + err.Error()})
+			return
+		}
+		
+		type Commit struct {
+			Hash    string `json:"hash"`
+			Message string `json:"message"`
+		}
+		
+		var commits []Commit
+		lines := strings.Split(string(out), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			parts := strings.SplitN(line, " ", 2)
+			if len(parts) >= 2 {
+				commits = append(commits, Commit{
+					Hash:    parts[0],
+					Message: parts[1],
+				})
+			} else if len(parts) == 1 {
+				commits = append(commits, Commit{
+					Hash:    parts[0],
+					Message: "",
+				})
+			}
+		}
+		
+		json.NewEncoder(w).Encode(commits)
 	})
 
 	// API trả về log thực tế của container
@@ -149,6 +210,18 @@ func StartServer(port int) error {
 			})
 			if err == nil {
 				_ = conn.WriteMessage(1, payload) // 1 là text message
+			}
+		}()
+
+		// Gửi ngay trạng thái các dịch vụ Live-Shadow khi vừa kết nối
+		go func() {
+			statuses := GetNodeStatuses()
+			payload, err := json.Marshal(map[string]interface{}{
+				"type":     "INITIAL_STATUSES",
+				"statuses": statuses,
+			})
+			if err == nil {
+				_ = conn.WriteMessage(1, payload)
 			}
 		}()
 		
@@ -256,4 +329,68 @@ func killProcessOnPort(port int) {
 			}
 		}
 	}
+}
+
+// extractCommitConfigs trích xuất các file cấu hình quan trọng của một commit vào thư mục sandbox tạm thời
+func extractCommitConfigs(workspacePath string, commit string) (string, error) {
+	destDir := filepath.Join(workspacePath, ".loomiss", "history", commit)
+	if _, err := os.Stat(destDir); err == nil {
+		return destDir, nil
+	}
+
+	err := os.MkdirAll(destDir, 0755)
+	if err != nil {
+		return "", err
+	}
+
+	cmd := exec.Command("git", "archive", "--format=tar", commit)
+	cmd.Dir = workspacePath
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+
+	tr := tar.NewReader(stdout)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+
+		ext := strings.ToLower(filepath.Ext(hdr.Name))
+		isImportant := ext == ".yml" || ext == ".yaml" || ext == ".tf" || ext == ".conf" ||
+			ext == ".go" || ext == ".tsx" || ext == ".ts" || ext == ".js" || ext == ".css" ||
+			hdr.Name == "package.json" || hdr.Name == "go.mod"
+
+		if !isImportant && hdr.Typeflag != tar.TypeDir {
+			continue
+		}
+
+		target := filepath.Join(destDir, hdr.Name)
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			os.MkdirAll(target, 0755)
+		case tar.TypeReg:
+			os.MkdirAll(filepath.Dir(target), 0755)
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(hdr.Mode))
+			if err != nil {
+				return "", err
+			}
+			if _, err := io.Copy(f, tr); err != nil {
+				f.Close()
+				return "", err
+			}
+			f.Close()
+		}
+	}
+
+	_ = cmd.Wait()
+	return destDir, nil
 }

@@ -17,17 +17,29 @@ interface GraphState {
   geminiApiKey: string | null;
   vulnerabilities: { nodeId: string; severity: 'HIGH' | 'MEDIUM' | 'LOW'; reason: string; }[];
   
+  // Phase 6 Digital Twin States
+  historicMode: boolean;
+  historicCommit: string;
+  nodeStatuses: Record<string, 'ONLINE' | 'OFFLINE'>;
+  routingTrace: string[];
+  
   // Actions
   setElements: (nodes: Node[], edges: Edge[]) => void;
   setDirection: (dir: 'TB' | 'LR') => void;
   setError: (err: string | null) => void;
   setActiveAgentNode: (nodeId: string | null) => void;
   connectWebSocket: (url?: string) => void;
-  fetchGraph: () => Promise<void>;
+  fetchGraph: (commit?: string) => Promise<void>;
   setTheme: (theme: 'light' | 'dark') => void;
   setSelectedNodeId: (id: string | null) => void;
   setGeminiApiKey: (key: string | null) => void;
   setVulnerabilities: (vulns: { nodeId: string; severity: 'HIGH' | 'MEDIUM' | 'LOW'; reason: string; }[]) => void;
+  
+  // Phase 6 Digital Twin Actions
+  setHistoricMode: (mode: boolean, commit?: string) => void;
+  setNodeStatus: (nodeId: string, status: 'ONLINE' | 'OFFLINE') => void;
+  setInitialStatuses: (statuses: Record<string, 'ONLINE' | 'OFFLINE'>) => void;
+  setRoutingTrace: (trace: string[]) => void;
 }
 
 // Hỗ trợ map ID, nhãn (label) và hình ảnh sang slug logo tương ứng của Simple Icons
@@ -314,6 +326,13 @@ export const useGraphStore = create<GraphState>((set, get) => {
     codeChanges: [],
     geminiApiKey: localStorage.getItem('loomiss_gemini_api_key') || null,
     vulnerabilities: [],
+
+    // Phase 6 Digital Twin States
+    historicMode: false,
+    historicCommit: 'active',
+    nodeStatuses: {},
+    routingTrace: [],
+
     setTheme: (theme) => set({ theme }),
     setSelectedNodeId: (id) => set({ selectedNodeId: id }),
     setGeminiApiKey: (key) => {
@@ -325,6 +344,29 @@ export const useGraphStore = create<GraphState>((set, get) => {
       set({ geminiApiKey: key });
     },
     setVulnerabilities: (vulns) => set({ vulnerabilities: vulns }),
+
+    // Phase 6 Digital Twin Actions
+    setHistoricMode: (mode, commit) => set({ historicMode: mode, historicCommit: commit || 'active' }),
+    setNodeStatus: (nodeId, status) => set((state) => ({
+      nodeStatuses: { ...state.nodeStatuses, [nodeId]: status }
+    })),
+    setInitialStatuses: (statuses) => set({ nodeStatuses: statuses }),
+    setRoutingTrace: (trace) => set((state) => {
+      const updatedEdges = state.edges.map(edge => {
+        const isHighlighted = trace.includes(edge.id);
+        const isNginx = edge.source === 'nginx' || edge.source.includes('nginx') || edge.source.includes('gateway');
+        const defaultClr = isNginx ? '#06b6d4' : '#a855f7';
+        return {
+          ...edge,
+          style: {
+            ...edge.style,
+            stroke: isHighlighted ? '#eab308' : defaultClr,
+            strokeWidth: isHighlighted ? 4 : 2,
+          }
+        };
+      });
+      return { routingTrace: trace, edges: updatedEdges };
+    }),
 
     setElements: (nodes, edges) => {
       const { direction, nodes: currentNodes, edges: currentEdges } = get();
@@ -464,15 +506,33 @@ export const useGraphStore = create<GraphState>((set, get) => {
       set({ activeAgentNode: nodeId, nodes: updatedNodes });
     },
 
-    fetchGraph: async () => {
+    fetchGraph: async (commit) => {
       try {
-        const response = await fetch('/api/graph');
+        const url = commit && commit !== 'active' ? `/api/graph?commit=${commit}` : '/api/graph';
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Không thể tải dữ liệu từ daemon server');
         const data = await response.json();
         
         if (data.nodes && data.nodes.length > 0) {
           const { nodes, edges } = formatGraphData(data.nodes, data.edges || []);
-          get().setElements(nodes, edges);
+          
+          const isHistoric = commit && commit !== 'active';
+          const { nodeStatuses } = get();
+
+          const nodesWithLiveStatuses = nodes.map(node => {
+            if (!isHistoric && nodeStatuses[node.id]) {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  status: nodeStatuses[node.id]
+                }
+              };
+            }
+            return node;
+          });
+
+          get().setElements(nodesWithLiveStatuses, edges);
         }
       } catch (err) {
         console.warn('[Loomiss] Không có kết nối tới API Daemon, sử dụng Mock Graph fallback:', err);
@@ -500,13 +560,78 @@ export const useGraphStore = create<GraphState>((set, get) => {
             
             // Xử lý các loại tin nhắn từ Go daemon
             switch (data.type) {
-              case 'UPDATE_GRAPH':
+              case 'UPDATE_GRAPH': {
                 set({ error: null, vulnerabilities: [] });
                 if (data.nodes) {
                   const { nodes, edges } = formatGraphData(data.nodes, data.edges || []);
-                  get().setElements(nodes, edges);
+                  
+                  // Chỉ áp dụng Live Statuses khi KHÔNG ở chế độ Time Travel lịch sử
+                  const { historicMode, nodeStatuses } = get();
+                  const nodesWithStatuses = nodes.map(node => {
+                    if (!historicMode && nodeStatuses[node.id]) {
+                      return {
+                        ...node,
+                        data: {
+                          ...node.data,
+                          status: nodeStatuses[node.id]
+                        }
+                      };
+                    }
+                    return node;
+                  });
+
+                  get().setElements(nodesWithStatuses, edges);
                 }
                 break;
+              }
+              case 'SERVICE_STATUS_CHANGE': {
+                set((state) => {
+                  const updatedStatuses = { ...state.nodeStatuses, [data.nodeId]: data.status };
+                  
+                  // Chỉ cập nhật trạng thái hiển thị trực quan của node khi KHÔNG ở chế độ Time Travel lịch sử
+                  if (state.historicMode) {
+                    return { nodeStatuses: updatedStatuses };
+                  }
+
+                  const updatedNodes = state.nodes.map(node => {
+                    if (node.id === data.nodeId) {
+                      return {
+                        ...node,
+                        data: {
+                          ...node.data,
+                          status: data.status
+                        }
+                      };
+                    }
+                    return node;
+                  });
+                  return { nodeStatuses: updatedStatuses, nodes: updatedNodes };
+                });
+                break;
+              }
+              case 'INITIAL_STATUSES': {
+                if (data.statuses) {
+                  set((state) => {
+                    if (state.historicMode) {
+                      return { nodeStatuses: data.statuses };
+                    }
+                    const updatedNodes = state.nodes.map(node => {
+                      if (data.statuses[node.id]) {
+                        return {
+                          ...node,
+                          data: {
+                            ...node.data,
+                            status: data.statuses[node.id]
+                          }
+                        };
+                      }
+                      return node;
+                    });
+                    return { nodeStatuses: data.statuses, nodes: updatedNodes };
+                  });
+                }
+                break;
+              }
               case 'PARSE_ERROR':
                 set({ error: data.message });
                 // Vẫn giữ lại Graph cũ (LKG - Last Known Good)

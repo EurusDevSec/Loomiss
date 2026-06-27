@@ -1,0 +1,5 @@
+# Loomiss Runtime Directories
+.loomiss/
+
+# Logs
+*.log
