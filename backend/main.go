@@ -14,10 +14,8 @@ func main() {
 	cwd, err := os.Getwd()
 	if err == nil {
 		if strings.HasSuffix(cwd, "backend") || strings.HasSuffix(cwd, "backend\\") || strings.HasSuffix(cwd, "backend/") {
-			if _, err := os.Stat("../docker-compose.yml"); err == nil {
-				fmt.Println("[Loomiss] Phát hiện đang chạy từ thư mục backend. Tự động chuyển thư mục làm việc lên thư mục cha...")
-				_ = os.Chdir("..")
-			}
+			fmt.Println("[Loomiss] Phát hiện đang chạy từ thư mục backend. Tự động chuyển thư mục làm việc lên thư mục cha...")
+			_ = os.Chdir("..")
 		}
 	}
 
