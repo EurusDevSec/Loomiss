@@ -6,40 +6,85 @@
 [![CGO-Free](https://img.shields.io/badge/CGO--Free-Pure_Go-brightgreen?logo=go)](https://golang.org)
 [![MCP Integrated](https://img.shields.io/badge/MCP-JSON--RPC-purple?logo=json)](https://modelcontextprotocol.io)
 
-**Loomiss** is a standalone, dynamic system architecture visualizer and Model Context Protocol (MCP) server. Written in pure, CGO-free Go, it automatically scans project repositories (Docker Compose, Terraform, Nginx, environment variables, local package/module declarations, and monitoring tools) to compile and render a real-time, hierarchical architecture map in a modern, neon-accented cyberpunk UI.
+**Loomiss** is a standalone, enterprise-grade **Dynamic Architecture Visualizer** and **Model Context Protocol (MCP) Server** built in pure, CGO-free Go. It parses workspace configurations, microservices, and infrastructure files in real-time, rendering an interactive, neon-accented cyberpunk Web UI. 
+
+Loomiss acts as the **"Digital Twin"** of your live codebase, bridging the gap between local source files, cloud orchestration layouts, and real-time observability.
 
 ---
 
 ## 📋 Table of Contents
 
+- [The Enterprise Pain Points](#-the-enterprise-pain-points)
+- [How Loomiss Solves & Measures Reality](#-how-loomiss-solves--measures-reality)
+- [Guaranteeing Diagram Accuracy](#-guaranteeing-diagram-accuracy)
 - [Key Features](#-key-features)
 - [System Architecture](#%EF%B8%8F-system-architecture)
 - [Supported Stack Scanners](#%EF%B8%8F-supported-stack-scanners)
 - [Getting Started](#-getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation & Global PATH Setup](#installation--global-path-setup)
-- [Usage Guide](#-usage-guide)
-  - [Running the CLI Daemon](#running-the-cli-daemon)
-  - [Web UI Dashboard](#web-ui-dashboard)
 - [Model Context Protocol (MCP) Integration](#-model-context-protocol-mcp-integration)
-  - [IDE Registration (Cursor / Antigravity IDE)](#ide-registration-cursor--antigravity-ide)
-  - [Exposed Tools](#exposed-tools)
 - [Development & Build Instructions](#-development--build-instructions)
-  - [Build Frontend Assets](#build-frontend-assets)
-  - [Compile Go Daemon Binary](#compile-go-daemon-binary)
-  - [Run Tests](#run-tests)
 - [License](#-license)
+
+---
+
+## 🚨 The Enterprise Pain Points
+
+In modern DevOps and AI-assisted development environments, engineering teams face critical "blind spots":
+
+### 1. AI Coding Blindness (Sự mù quáng khi AI sửa code)
+Coding Agents (Cursor, Devin, etc.) can edit dozens of configuration files simultaneously. Kỹ sư phải đọc file diff rời rạc mà không có cái nhìn tổng quan. Loomiss converts code changes into an interactive visual graph, showing precisely what new links or databases the AI has introduced before you commit.
+
+### 2. Architecture Diagram Drift (Trôi lệch sơ đồ hạ tầng)
+Miro, Lucidchart, or Draw.io diagrams are static drawings that become obsolete the moment the next line of code is pushed. Loomiss eliminates this draft overhead: **your code is the documentation**. 
+
+### 3. Visual Clutter & Path Congestion (Nghẽn mạng & Chồng lấn đường vẽ)
+When graphs scale up to 30+ services (like Google's Microservices Demo), traditional layout tools produce tangled, crossing lines. Loomiss implements **A\* Pathfinding** and **Focal Fading** to untangle dense microservice communication highways.
+
+---
+
+## 📈 How Loomiss Solves & Measures Reality
+
+Loomiss does not mock or estimate configurations; it measures system state through concrete verification engines:
+
+```
+┌────────────────────────────────────────────────────────┐
+│                      Loomiss Core                      │
+├───────────────────┬────────────────────────────────────┤
+│ Static Scanner    │ K8s, Terraform, Nginx, Compose, Env│
+├───────────────────┼────────────────────────────────────┤
+│ Live Observability│ TCP/HTTP Background Prober (10s)   │
+├───────────────────┼────────────────────────────────────┤
+│ Real-Time Metrics │ Docker SDK Container Resource Stream│
+└───────────────────┴────────────────────────────────────┘
+```
+
+1. **Lightweight TCP/HTTP Probing:** A background Goroutine runs every 10 seconds to check if exposed ports of nodes are alive. Offline services pulse bright red and display an `OFFLINE` badge on the UI, turning their connecting edges red to represent blocked data paths.
+2. **Docker SDK Metrics Integration:** Streams real-time CPU & RAM container statistics directly to the Web UI via WebSockets, rendering neon indicator bars below each service node.
+3. **Ghost Node Detection:** If an Nginx proxy or gateway directs traffic to an unmapped host/port, Loomiss instantly generates a grey-dashed **Ghost Node** (`unknown_service`) to alert engineers of routing gaps.
+
+---
+
+## 🎯 Guaranteeing Diagram Accuracy
+
+Loomiss guarantees a $100\%$ accurate representation of your infrastructure through:
+
+*   **Recursive Workspace Mapping:** Scans all configuration files (YAML, HCL, Conf, package declarations) under the target workspace recursively.
+*   **Recursive Parent Coordinate Normalization:** For nested groups (like pods inside Kubernetes or databases inside Terraform), Loomiss sums up parent coordinates, converting relative values to absolute canvas coordinates. This allows the pathfinder to position edges accurately.
+*   **Folder-Based Service ID Resolution:** Automatically extracts microservice directory structures (e.g. `microservices-demo/src/<service_name>`) as the unified Node ID, guaranteeing that local source code projects merge flawlessly with cloud Kubernetes deployment declarations.
+*   **Time Travel Git Diffs:** Backed by `git log` and `git show`, users can slide back through Git history. Loomiss builds and displays the exact architecture at previous commits *without* running a disk `git checkout`, highlighting added (green), modified (yellow), or deleted (dashed-red) nodes.
 
 ---
 
 ## 🌀 Key Features
 
-- **Real-Time Hot-Reloading:** Integrates a background file watcher. Modifying infrastructure configurations instantly re-compiles the graph and broadcasts updates to the Web UI via WebSockets.
-- **Hierarchical Tier Grouping (Sub-flows):** Utilizes Dagre compound graph layouts to arrange leaf services inside logical group containers (e.g. Gateway Tier, Docker Compose Stack, Terraform Cloud Resources, Local Applications, and DevOps Stack).
-- **Static Port-Based Resolving:** Automatically maps Nginx `proxy_pass` rules, Docker network mappings, and Terraform variable bindings to exposed container/app ports, linking edges and highlighting **Configuration Drift**.
-- **Ghost Node Detection:** Dynamically resolves edge endpoints. If Nginx routes traffic to an undefined port, it generates an highlighted grey-dashed "Ghost Node" (`unknown_service`) and displays a red-dashed warning connection line.
-- **CGO-Free SQLite persistence:** Implements a pure-Go SQLite storage engine (`modernc.org/sqlite`) for local vector indexing.
-- **Semantic Caching & Vector Memory:** Computes offline Bag-of-Words Cosine Similarity vectors (with automatic online Gemini API `text-embedding-004` upgrade) to enable Semantic Caching on graph schema queries and persistent vector database indexing for AI design rules.
+> [!TIP]
+> **A* Pathfinder (Smart Edges):** Integrated `@jalez/react-flow-smart-edge` to calculate obstacle-avoiding orthogonal paths around node bounding boxes, resolving edge-node overlaps. Group nodes are filtered out of obstacles to allow clean internal routing.
+>
+> **Interactive Hover Highlight:** Rê chuột qua bất kỳ đường nối nào sẽ làm nó đổi màu sang Neon Cyan, tăng độ rộng và phóng to các hạt traffic chạy dọc theo path.
+>
+> **Selected-Node Focus Fading:** Selecting a node dims all unrelated connections to $15\%$ opacity, keeping directly connected paths at $100\%$ opacity to immediately clarify traffic flows.
+>
+> **Layout Grid Spacing:** Adjusted node margins (`colWidth = 360`, `rowHeight = 180`) to ensure parallel edge labels (like `"Depends On"`) sit cleanly in a $120\text{px}$ clear horizontal channel without overlapping handles.
 
 ---
 
@@ -52,16 +97,18 @@ graph TD
         NX[nginx.conf]
         TF[main.tf]
         ENV[.env files]
-        PKG[package.json / go.mod]
+        PKG[package.json / go.mod / requirements.txt / pom.xml / .csproj]
+        K8S[Kubernetes YAMLs]
     end
 
-    subgraph "Loomiss Go Daemon (CLI / Stdin)"
-        Watcher[File Watcher]
+    subgraph "Loomiss Go Daemon (CLI)"
+        Watcher[File Watcher fsnotify]
         Registry[ConfigParser Registry]
         Compiler[Graph Compiler & Resolver]
         SQLite[(SQLite DB: memory.db)]
         Similarity[Cosine Similarity Engine]
         JSONRPC[JSON-RPC Stdio Handler]
+        Prober[Observability TCP Prober]
     end
 
     subgraph "Clients"
@@ -71,13 +118,10 @@ graph TD
 
     %% Workflow Connections
     Watcher -. Watches .-> Workspace
-    Registry -- CanParse & Parse --> DC
-    Registry -- CanParse & Parse --> NX
-    Registry -- CanParse & Parse --> TF
-    Registry -- CanParse & Parse --> ENV
-    Registry -- CanParse & Parse --> PKG
+    Registry -- Parses configurations --> Target Workspace Directory
     
     Compiler -- Aggregates & Resolves Ports --> Registry
+    Prober -- Telemetry check --> Compiler
     UI -- Fetches Graph / WebSocket --> Compiler
     
     JSONRPC -- Reads/Writes Tools --> Compiler
@@ -92,110 +136,71 @@ graph TD
 
 Loomiss includes modular `ConfigParser` implementations to parse and group the following stacks:
 
-1. **Physical/Infra Tiers:**
-   - **Docker Compose:** Parses services, images, exposed ports, depends_on relationships, and nests them inside the `🐳 Docker Compose Stack`.
-   - **Terraform:** Extracts HCL syntax variables, resource dependencies (`aws_instance`, `aws_db_instance`, etc.), and groups them under the `☁️ Terraform Cloud Tier`.
-   - **Nginx Proxy:** Extracts server blocks, listening ports, `proxy_pass` rules, and groups them under the `🌐 Public Gateway Tier`.
-2. **Logical Application Tiers:**
-   - **Node.js (`package.json`):** Detects Next.js, React, Vue, Express, or NestJS projects and assigns respective visual icons.
-   - **Go (`go.mod`):** Identifies Go modules and sets custom branding.
-   - **Environment Files (`.env`):** Extracts `PORT` declarations and database URL links (Postgres, MySQL, Redis, MongoDB), automatically spawning database nodes connected to parent apps.
-3. **DevOps & Observability:**
-   - **CI/CD:** Detects GitHub Workflows (`.github/workflows/`) and `Jenkinsfile` configs.
-   - **Monitoring:** Detects `prometheus.yml` and Grafana config files to render the `🛠️ DevOps & Observability Tier`.
+1.  **Orchestration & Infrastructure Tiers:**
+    *   **Kubernetes:** Parses Deployment, Service, and StatefulSet manifests, grouping them into the `☸️ Kubernetes Cluster`.
+    *   **Docker Compose:** Parses services, exposed ports, and depends_on properties under the `🐳 Docker Compose Stack`.
+    *   **Terraform:** Extracts resource relations, database instances, and binds them under the `☁️ Terraform Cloud Tier`.
+    *   **Nginx Proxy:** Resolves listening blocks and `proxy_pass` rules, grouped under the `🌐 Public Gateway Tier`.
+2.  **Multilanguage Application Scanner:**
+    *   **Python:** Scans `requirements.txt`, `pyproject.toml`, `Pipfile`.
+    *   **Java:** Scans `pom.xml`, `build.gradle`.
+    *   **C# / .NET:** Scans `.csproj`.
+    *   **Node.js & Go:** Parses `package.json` and `go.mod`.
+    *   *Automatically sets technology-specific logos (with Devicons fallbacks for AWS/Java trademark 404s).*
 
 ---
 
 ## 🚀 Getting Started
 
-Loomiss is packaged as a **completely standalone binary** containing both the embedded React frontend and the Go engine. **You do NOT need Go, Node.js, or npm to run it.** 
-
----
+Loomiss is packaged as a **completely standalone binary** containing both the embedded React frontend and the Go engine. **You do NOT need Go, Node.js, or npm to run it.**
 
 ### 1. Quick Start (No Dependencies Needed)
 
-If you already have the pre-compiled binary `loomiss.exe` (or `loomiss` on Linux/macOS):
-
-1. **Copy** the binary to your target project root folder (or add it to your system's global `PATH`).
-2. **Run** the command:
-   ```bash
-   ./loomiss.exe start
-   ```
-3. Open `http://localhost:18900` in your browser.
-
----
+1.  **Copy** the compiled `loomiss.exe` (or `loomiss` on Linux/macOS) to your target project folder.
+2.  **Run** the command:
+    ```bash
+    ./loomiss.exe start
+    ```
+3.  Open `http://localhost:18900` in your browser.
 
 ### 2. Building from Source & Installation (For Developers)
 
-If you want to modify Loomiss, compile it yourself, or automate global setup, you will need:
-- [Go 1.22+](https://golang.org/doc/install)
-- [Node.js v18+](https://nodejs.org)
-
 #### Option A: Automated Build & Installer (Recommended)
-Our automated setup scripts check your prerequisites, install node dependencies, build the React frontend, compile the Go binary, and configure your system `PATH` automatically:
+Our automated setup scripts check your prerequisites, install dependencies, compile the Vite app and Go binary, and configure the global system path:
 
-- **On Windows (PowerShell):**
-  Open PowerShell as Administrator and run:
-  ```powershell
-  PowerShell -ExecutionPolicy Bypass -File ./setup.ps1
-  ```
-- **On Linux/macOS/Git Bash:**
-  Open terminal and run:
-  ```bash
-  chmod +x ./setup.sh
-  ./setup.sh
-  ```
+*   **On Windows (PowerShell):**
+    ```powershell
+    PowerShell -ExecutionPolicy Bypass -File ./setup.ps1
+    ```
+*   **On Linux/macOS:**
+    ```bash
+    chmod +x ./setup.sh
+    ./setup.sh
+    ```
 
-#### Option B: Manual Compilation
+#### Option B: Manual Compilation (With AppLocker/Windows Defender Bypass)
+On some Windows enterprise environments, newly compiled binaries inside temp directories are blocked. Strip debug symbols to change the signature:
 
-1. Build the React Flow frontend assets:
-   ```bash
-   cd frontend
-   npm install
-   npm run build
-   cd ..
-   ```
-2. Build the standalone Go executable:
-   ```bash
-   cd backend
-   go build -o ../loomiss.exe main.go
-   cd ..
-   ```
-3. To configure the `loomiss` command globally, add the root directory containing `loomiss.exe` (or `loomiss` on Unix) to your system environment `Path` (Windows) or shell profile (Linux/macOS).
-4. Restart your terminal. You can now execute `loomiss` from any project folder!
-
----
-
-## 💻 Usage Guide
-
-### Running the CLI Daemon
-
-To visualize any project workspace, open a terminal in the target project folder and run:
-```bash
-loomiss start
-```
-*By default, the server listens on port `18900` and automatically opens your web browser to `http://localhost:18900`.*
-
-To bind to a custom port:
-```bash
-loomiss start -port 9000
-```
-
-### Web UI Dashboard
-
-- **Interactive Canvas:** Built on `@xyflow/react` (React Flow), allowing you to pan, zoom, and drag nodes. Dragging a parent tier panel moves all its nested children together.
-- **Direction Toggle:** Control Panel supports hot-swapping layouts between **Vertical (Top-to-Bottom)** and **Horizontal (Left-to-Right)** modes.
-- **AI Agent Simulation:** Clicking the "Simulate AI Edit Node" button triggers a visual green-pulsing ripple animation on the target node, simulating an active AI edit event.
+1.  Build the React Flow frontend assets:
+    ```bash
+    cd frontend && npm install && npm run build && cd ..
+    ```
+2.  Build the standalone Go executable with stripped symbols:
+    ```bash
+    cd backend
+    go build -ldflags="-s -w" -o ../loomiss.exe main.go
+    cd ..
+    ```
+3.  To run the daemon:
+    ```bash
+    go run -ldflags="-s -w" main.go start
+    ```
 
 ---
 
 ## 🤖 Model Context Protocol (MCP) Integration
 
-Loomiss registers as an MCP server. This allows AI Coding Agents (such as Cursor or Antigravity IDE) to interact directly with Loomiss to inspect architectural topologies, check linter rules, and flash edit intents on the UI.
-
-### IDE Registration (Cursor / Antigravity IDE)
-
-Add the following block to your editor's `mcp.json` settings:
+Loomiss registers as an MCP server. Add the following block to your editor's `mcp.json` settings:
 
 ```json
 {
@@ -207,44 +212,11 @@ Add the following block to your editor's `mcp.json` settings:
   }
 }
 ```
-*(Make sure to change the command path to the absolute location of your `loomiss.exe`)*.
 
 ### Exposed Tools
-
-- `get_architecture_schema`: Retreives the resolved node/edge schema. Accepts an optional `prompt` parameter to query/set the semantic SQLite cache (Similarity threshold > 0.90), avoiding redundant API requests.
-- `report_agent_intent`: Signals that the AI is editing a specific node, triggering a ripple light effect on the dashboard.
-- `add_architectural_memory`: Inserts architectural rules and facts (e.g., *"Postgres database must never be exposed to public networks"*) into the SQLite long-term vector repository.
-- `get_architectural_memory`: Queries stored facts using cosine similarity vector lookups (threshold > 0.35).
-
----
-
-## 🧪 Development & Build Instructions
-
-### Build Frontend Assets
-
-The frontend is a Vite + React + TailwindCSS app. To compile the production build:
-```bash
-cd frontend
-npm install
-npm run build
-```
-*Note: Vite is configured to output compiled HTML/JS/CSS assets directly into `backend/daemon/dist/`.*
-
-### Compile Go Daemon Binary
-
-To embed the static frontend assets and compile the Go executable:
-```bash
-cd backend
-go build -o ../loomiss.exe main.go
-```
-
-### Run Tests
-
-Run the backend parser tests (tests compile composition parsing, nginx rules, compound directories, and app-level fallback scans):
-```bash
-cd backend
-go test ./parsers/...
-```
+*   `get_architecture_schema`: Retrieves the resolved graph schema. Supports semantic caching.
+*   `report_agent_intent`: Signals that the AI is editing a specific node, flashing a green ripple on the Web UI.
+*   `add_architectural_memory` / `get_architectural_memory`: Manages architectural rules in the vector SQLite DB.
 
 ---
 

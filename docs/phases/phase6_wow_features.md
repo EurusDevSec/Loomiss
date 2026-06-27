@@ -61,6 +61,19 @@
     *   Cung cấp 3 nút bấm tương tác nhanh: **Restart**, **Stop**, và **Start** cho container đó.
     *   Khi click, Web UI gọi API tương ứng gửi lệnh đến Docker API để điều khiển vòng đời container ngay lập tức.
 
+### Bước 6: Smart Edge Routing & Layout Spacing (Gỡ rối đường nối & Tối ưu bố cục)
+1. **Thuật toán Dò đường A\* (A-Star Pathfinding)**:
+   * Tích hợp thư viện `@jalez/react-flow-smart-edge` nhằm tính toán đường đi vuông góc cho Edges bo vòng tránh các Node.
+   * Loại bỏ các parent group nodes ra khỏi danh sách chướng ngại vật để cho phép vẽ đường đi nội bộ giữa các service con bên trong một cách mượt mà.
+   * **Chuẩn hóa tọa độ đệ quy (Coordinate Normalization)**: Tự động tính toán cộng dồn offset của node cha để chuyển đổi hệ tọa độ tương đối của node con thành hệ tọa độ tuyệt đối chuẩn xác trên canvas, giúp thuật toán dò đường phát hiện đúng vị trí thực tế của chướng ngại vật.
+2. **Nhấn mạnh đường nối khi tương tác (Hover Highlight)**:
+   * Bắt sự kiện `MouseEnter`/`MouseLeave` trên từng đường nối: Khi di chuột qua, đường nối sẽ sáng màu Neon Cyan (`#06b6d4`), tăng độ dày lên `4.5px` và phóng to hạt chuyển động biểu diễn dòng traffic để dễ dàng truy vết tuyến truyền dẫn.
+3. **Fading tập trung kết nối (Selected-Node Focus)**:
+   * Khi người dùng click chọn bất kỳ Node nào trên sơ đồ, toàn bộ các Edges không liên quan trực tiếp đến Node đó sẽ tự động mờ đi (độ mờ giảm còn `15%` opacity), giữ nguyên độ sáng $100\%$ cho các luồng giao tiếp trực tiếp để triệt tiêu nhiễu thị giác trên đồ thị dày đặc.
+4. **Giản cách lưới trực quan (Layout Grid Spacing)**:
+   * Điều chỉnh hằng số layout trong `layout.ts` với `colWidth = 360` và `rowHeight = 180`.
+   * Tăng khoảng cách trống chiều ngang giữa các Node lên **120px**, tạo không gian hoàn hảo ở giữa cho các nhãn chỉ dẫn (như `"Depends On"`) hiển thị tự nhiên mà không bao giờ bị đè lấn lên các cổng kết nối (Handles) hay biên Node.
+
 ---
 
 ## 4. Kịch bản kiểm thử & Xác thực (Verification Plan)

@@ -64,6 +64,20 @@
 ### Bước 5: Hợp nhất đồ thị (Graph Compiling)
 Viết hàm `CompileGraph(workspacePath string)` duyệt qua thư mục chỉ định, gọi các parser tương ứng nếu tìm thấy tệp cấu hình, sau đó hợp nhất các Node/Edge trùng nhau (dựa trên IP/Port/Service Name) để tạo thành một Graph thống nhất cuối cùng.
 
+### Bước 6: Viết Kubernetes Parser (Tích hợp K8s Manifest)
+1. Viết parser phân tích các tệp YAML đa tài liệu (multi-document YAML) của Kubernetes (Deployments, Services, StatefulSets).
+2. Trích xuất thông tin service, image, metadata và cổng giao tiếp.
+3. Tự động nhận diện mối quan hệ phụ thuộc (inter-pod dependencies) dựa trên phân tích các biến môi trường cấu hình kết nối (ví dụ: host urls hoặc env trỏ sang service khác).
+4. Nhóm các tài nguyên K8s vào hộp nhóm `"kubernetes-group"`.
+
+### Bước 7: Phân tích dự án Đa ngôn ngữ (Multilanguage App Scanner)
+1. Bổ sung các parser phát hiện công nghệ cho mã nguồn nội bộ:
+   * **Python**: Quét `requirements.txt`, `pyproject.toml`, `Pipfile`.
+   * **Java**: Quét `pom.xml`, `build.gradle`.
+   * **C# / .NET**: Quét `.csproj`.
+2. Tạo cơ chế chuẩn hóa ID dựa trên thư mục mẹ (`getServiceFolderID`) để đồng bộ tuyệt đối thông tin ngôn ngữ lập trình của mã nguồn vào các node hạ tầng tương ứng (như container trên Docker Compose hay pod trên Kubernetes), kích hoạt việc gộp node hoàn hảo.
+3. Thiết lập logo công nghệ và icon tự động (kết hợp fallbacks cho các thương hiệu bị chặn/404 như Java, AWS).
+
 ---
 
 ## 4. Kịch bản kiểm thử & Xác thực (Verification Plan)

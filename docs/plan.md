@@ -100,11 +100,14 @@ Dự án tuân thủ nghiêm ngặt mô hình **Kiến trúc Sạch (Clean Archi
   * Cung cấp các công cụ: `get_architectural_memory` (đọc bộ nhớ kiến trúc), `add_architectural_memory` (AI Agent ghi lại phát hiện mới về hệ thống).
   * Viết middleware kiểm tra cache: khi Agent gửi yêu cầu phân tích thông qua MCP, Loomiss sẽ tra cứu trong `prompt_cache` trước, nếu trùng khớp sẽ trả về kết quả ngay lập tức để tiết kiệm token tối đa.
 
-#### Phase 6: Infrastructure Digital Twin & Shift-Left Guardrails (Tuần 6 - Nâng cao) - [Specs](file:///r:/_Projects/Eurus_Workspace/Loomiss/docs/phases/phase6_digital_twin.md)
+#### Phase 6: Infrastructure Digital Twin & Shift-Left Guardrails (Tuần 6 - Nâng cao - ĐÃ HOÀN THÀNH) - [Specs](file:///r:/_Projects/Eurus_Workspace/Loomiss/docs/phases/phase6_digital_twin.md)
 * **Time Travel Slider (Git History)**: Tích hợp thanh kéo thời gian ở chân trang Web UI. Go Backend chạy các lệnh `git log` và `git show <commit>:<file>` để trích xuất và dựng lại sơ đồ lịch sử mà không cần checkout đĩa thật, hiển thị trực quan các cấu hình bị thay đổi hoặc đứt gãy.
 * **Live-Shadow Observability (TCP/HTTP Probing)**: Bổ sung Goroutine chạy ngầm thực hiện health check định kỳ (TCP/HTTP) tới các cổng dịch vụ nội bộ đang hoạt động. Node offline sẽ nhấp nháy đỏ rực, hiện cảnh báo "OFFLINE" và đổi màu luồng sáng của Edge kết nối.
 * **Agentic Advisor (Shift-Left Guardrails)**: Sử dụng GraphRAG và LLM API để đánh giá tác động ngay khi chỉnh sửa file dở dang. Hiển thị thông báo Warning cảnh báo nếu thay đổi làm đứt gãy luồng kết nối của các microservices phụ thuộc.
 * **LLM-Guided Packet Trace Simulation (Network Sandbox)**: Giả lập đường đi của request từ người dùng đến cơ sở dữ liệu trên canvas bằng các chấm sáng chuyển động. Sử dụng LLM phân tích cấu hình định tuyến (như proxy headers, firewall rules) để đưa ra dự đoán kết quả định tuyến ảo.
+* **Kubernetes Manifest Parser**: Hỗ trợ phân tích cú pháp tĩnh YAML Kubernetes (Deployments, Services, StatefulSets) và tự động nhận diện phụ thuộc mạng.
+* **Multilanguage Scanner**: Hỗ trợ quét mã nguồn Python, Java, C# để nhận diện logo và phân loại công nghệ.
+* **Smart Edges (A\* Pathfinder & Spacing)**: Tích hợp thuật toán A\* để định tuyến đường đi bo vòng tránh các Node, tự động chuẩn hóa tọa độ tuyệt đối, hỗ trợ highlight khi di chuột (Hover Highlight) và làm mờ các kết nối không liên quan khi chọn Node (Focus Fading). Giãn rộng lưới bố cục (`colWidth = 360`, `rowHeight = 180`) để loại bỏ chồng lấn nhãn.
 
 ---
 
