@@ -57,7 +57,7 @@ func ParseTerraformDirectory(dirPath string) ([]domain.Node, []domain.Edge, erro
 
 				// Phân loại Node
 				nodeType := "app"
-				if strings.Contains(resType, "db") || strings.Contains(resType, "rds") || strings.Contains(resType, "dynamodb") {
+				if strings.Contains(resType, "db") || strings.Contains(resType, "rds") || strings.Contains(resType, "dynamodb") || strings.Contains(resType, "redis") || strings.Contains(resType, "cache") {
 					nodeType = "database"
 				} else if strings.Contains(resType, "lb") || strings.Contains(resType, "gateway") || strings.Contains(resType, "route53") {
 					nodeType = "gateway"

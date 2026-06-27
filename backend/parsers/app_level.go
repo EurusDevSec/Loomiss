@@ -38,7 +38,10 @@ func (p *AppLevelParser) CanParse(workspacePath string) bool {
 			return nil
 		}
 		nameLower := strings.ToLower(info.Name())
-		if info.Name() == "package.json" || info.Name() == "composer.json" || info.Name() == "go.mod" || info.Name() == "Jenkinsfile" || nameLower == "prometheus.yml" || nameLower == "prometheus.yaml" || nameLower == "grafana.ini" {
+		if info.Name() == "package.json" || info.Name() == "composer.json" || info.Name() == "go.mod" ||
+			info.Name() == "requirements.txt" || info.Name() == "pyproject.toml" || info.Name() == "Pipfile" ||
+			info.Name() == "pom.xml" || info.Name() == "build.gradle" || strings.HasSuffix(nameLower, ".csproj") ||
+			info.Name() == "Jenkinsfile" || nameLower == "prometheus.yml" || nameLower == "prometheus.yaml" || nameLower == "grafana.ini" {
 			found = true
 			return filepath.SkipDir
 		}
@@ -64,10 +67,16 @@ type DirContext struct {
 	HasComposer  bool
 	HasPackage   bool
 	HasGoMod     bool
+	HasPython    bool
+	HasJava      bool
+	HasCSharp    bool
 	EnvPath      string
 	PackagePath  string
 	ComposerPath string
 	GoModPath    string
+	PythonPath   string
+	JavaPath     string
+	CSharpPath   string
 }
 
 func (p *AppLevelParser) Parse(workspacePath string) ([]domain.Node, []domain.Edge, error) {
@@ -132,6 +141,15 @@ func (p *AppLevelParser) Parse(workspacePath string) ([]domain.Node, []domain.Ed
 		} else if info.Name() == "go.mod" {
 			ctx.HasGoMod = true
 			ctx.GoModPath = path
+		} else if info.Name() == "requirements.txt" || info.Name() == "pyproject.toml" || info.Name() == "Pipfile" {
+			ctx.HasPython = true
+			ctx.PythonPath = path
+		} else if info.Name() == "pom.xml" || info.Name() == "build.gradle" {
+			ctx.HasJava = true
+			ctx.JavaPath = path
+		} else if strings.HasSuffix(nameLower, ".csproj") {
+			ctx.HasCSharp = true
+			ctx.CSharpPath = path
 		} else if strings.HasPrefix(info.Name(), ".env") {
 			// Prioritize shorter env files (e.g. .env or .env.local over others)
 			if ctx.EnvPath == "" || len(info.Name()) < len(filepath.Base(ctx.EnvPath)) {
@@ -162,6 +180,18 @@ func (p *AppLevelParser) Parse(workspacePath string) ([]domain.Node, []domain.Ed
 			pNodes, pEdges := parsePackageJSON(ctx.PackagePath, dir, folderName, ctx.EnvPath)
 			nodes = append(nodes, pNodes...)
 			edges = append(edges, pEdges...)
+		} else if ctx.HasPython {
+			pyNodes, pyEdges := parsePythonProject(ctx.PythonPath, dir, folderName, ctx.EnvPath)
+			nodes = append(nodes, pyNodes...)
+			edges = append(edges, pyEdges...)
+		} else if ctx.HasJava {
+			jNodes, jEdges := parseJavaProject(ctx.JavaPath, dir, folderName, ctx.EnvPath)
+			nodes = append(nodes, jNodes...)
+			edges = append(edges, jEdges...)
+		} else if ctx.HasCSharp {
+			csNodes, csEdges := parseCSharpProject(ctx.CSharpPath, dir, folderName, ctx.EnvPath)
+			nodes = append(nodes, csNodes...)
+			edges = append(edges, csEdges...)
 		}
 	}
 
@@ -761,3 +791,109 @@ func parseEnvFileAtPath(envPath string, parentID string, parentGroupID string) (
 
 	return metadata, edges, nodes
 }
+
+func parsePythonProject(path, dir, folderName, envPath string) ([]domain.Node, []domain.Edge) {
+	var nodes []domain.Node
+	var edges []domain.Edge
+
+	id := folderName
+	var envMetadata map[string]string
+	var envEdges []domain.Edge
+	var envDBNodes []domain.Node
+	if envPath != "" {
+		envMetadata, envEdges, envDBNodes = parseEnvFileAtPath(envPath, id, "app-workspace-group")
+	}
+
+	metadata := map[string]string{
+		"path": path,
+	}
+	for k, v := range envMetadata {
+		metadata[k] = v
+	}
+
+	appNode := domain.Node{
+		ID:       id,
+		Label:    fmt.Sprintf("🐍 Python Backend (%s)", id),
+		Type:     "app",
+		Status:   "active",
+		Metadata: metadata,
+		ParentID: "app-workspace-group",
+	}
+
+	nodes = append(nodes, appNode)
+	nodes = append(nodes, envDBNodes...)
+	edges = append(edges, envEdges...)
+
+	return nodes, edges
+}
+
+func parseJavaProject(path, dir, folderName, envPath string) ([]domain.Node, []domain.Edge) {
+	var nodes []domain.Node
+	var edges []domain.Edge
+
+	id := folderName
+	var envMetadata map[string]string
+	var envEdges []domain.Edge
+	var envDBNodes []domain.Node
+	if envPath != "" {
+		envMetadata, envEdges, envDBNodes = parseEnvFileAtPath(envPath, id, "app-workspace-group")
+	}
+
+	metadata := map[string]string{
+		"path": path,
+	}
+	for k, v := range envMetadata {
+		metadata[k] = v
+	}
+
+	appNode := domain.Node{
+		ID:       id,
+		Label:    fmt.Sprintf("☕ Java Backend (%s)", id),
+		Type:     "app",
+		Status:   "active",
+		Metadata: metadata,
+		ParentID: "app-workspace-group",
+	}
+
+	nodes = append(nodes, appNode)
+	nodes = append(nodes, envDBNodes...)
+	edges = append(edges, envEdges...)
+
+	return nodes, edges
+}
+
+func parseCSharpProject(path, dir, folderName, envPath string) ([]domain.Node, []domain.Edge) {
+	var nodes []domain.Node
+	var edges []domain.Edge
+
+	id := folderName
+	var envMetadata map[string]string
+	var envEdges []domain.Edge
+	var envDBNodes []domain.Node
+	if envPath != "" {
+		envMetadata, envEdges, envDBNodes = parseEnvFileAtPath(envPath, id, "app-workspace-group")
+	}
+
+	metadata := map[string]string{
+		"path": path,
+	}
+	for k, v := range envMetadata {
+		metadata[k] = v
+	}
+
+	appNode := domain.Node{
+		ID:       id,
+		Label:    fmt.Sprintf("🎯 C# Backend (%s)", id),
+		Type:     "app",
+		Status:   "active",
+		Metadata: metadata,
+		ParentID: "app-workspace-group",
+	}
+
+	nodes = append(nodes, appNode)
+	nodes = append(nodes, envDBNodes...)
+	edges = append(edges, envEdges...)
+
+	return nodes, edges
+}
+

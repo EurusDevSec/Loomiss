@@ -127,13 +127,18 @@ const getLogoSlug = (nodeId: string, type: string, label: string, image?: string
     'elb': 'amazonelasticloadbalancing',
     'waf': 'amazonwaf',
     'aws-waf': 'amazonwaf',
-    'aws': 'amazonwebservices',
+    'aws': 'aws',
     'gcp': 'googlecloud',
     'google-cloud': 'googlecloud',
     'azure': 'microsoftazure',
     'cloudflare': 'cloudflare',
     'digitalocean': 'digitalocean',
-    'github': 'github'
+    'github': 'github',
+    'python': 'python',
+    'java': 'java',
+    'csharp': 'csharp',
+    'c#': 'csharp',
+    'dotnet': 'dotnet'
   };
 
   // 4. Try matching with synonyms first
@@ -214,6 +219,8 @@ const formatGraphData = (rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edg
     const logoSlug = getLogoSlug(node.id, node.type, cleanLabel, node.metadata?.image, node.metadata);
     const logoUrl = logoSlug === 'redis'
       ? 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/redis/redis-original.svg'
+      : (logoSlug === 'aws' || logoSlug === 'amazonwebservices')
+      ? 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/amazonwebservices/amazonwebservices-original.svg'
       : logoSlug
       ? `https://cdn.simpleicons.org/${logoSlug}`
       : null;
