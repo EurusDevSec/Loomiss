@@ -34,6 +34,7 @@ export default function App() {
     codeChanges,
     geminiApiKey,
     setGeminiApiKey,
+    setVulnerabilities,
   } = useGraphStore();
 
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
@@ -126,24 +127,100 @@ User prompt / query:
         });
       }
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${geminiApiKey}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
+      const jsonSchema = {
+        type: "OBJECT",
+        properties: {
+          summary: { 
+            type: "STRING", 
+            description: "Detailed system architecture security and design audit report, styled nicely with markdown headers, lists, emojis, etc." 
           },
-          body: JSON.stringify({ contents }),
+          vulnerable_nodes: {
+            type: "ARRAY",
+            items: {
+              type: "OBJECT",
+              properties: {
+                node_id: { type: "STRING", description: "Node ID of the vulnerable component (e.g. 'db', 'nginx', 'app'). Must match exactly an active node ID." },
+                severity: { type: "STRING", enum: ["HIGH", "MEDIUM", "LOW"] },
+                reason: { type: "STRING", description: "Brief reason why this component has a vulnerability." }
+              },
+              required: ["node_id", "severity", "reason"]
+            }
+          }
+        },
+        required: ["summary", "vulnerable_nodes"]
+      };
+
+      const payload = {
+        contents,
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: jsonSchema
         }
-      );
+      };
+
+      const callGeminiAPI = async (apiKey: string): Promise<Response> => {
+        const fetchWithRetry = async (model: string, retries = 3, delay = 1000): Promise<Response> => {
+          try {
+            const res = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+              }
+            );
+            if ((res.status === 503 || res.status === 429) && retries > 0) {
+              console.warn(`Gemini API returned status ${res.status} for model ${model}. Retrying in ${delay}ms...`);
+              await new Promise(r => setTimeout(r, delay));
+              return fetchWithRetry(model, retries - 1, delay * 2);
+            }
+            return res;
+          } catch (err) {
+            if (retries > 0) {
+              console.warn(`Gemini API fetch error for model ${model}. Retrying in ${delay}ms...`, err);
+              await new Promise(r => setTimeout(r, delay));
+              return fetchWithRetry(model, retries - 1, delay * 2);
+            }
+            throw err;
+          }
+        };
+
+        // Try gemini-3.5-flash first
+        let response = await fetchWithRetry('gemini-3.5-flash');
+        
+        // Fallback to gemini-2.5-flash if 503 or 429 occurs
+        if (!response.ok && (response.status === 503 || response.status === 429)) {
+          console.warn(`Gemini 3.5 Flash failed with ${response.status}. Falling back to stable gemini-2.5-flash...`);
+          response = await fetchWithRetry('gemini-2.5-flash');
+        }
+        
+        return response;
+      };
+
+      const response = await callGeminiAPI(geminiApiKey);
 
       if (!response.ok) {
         throw new Error(`API call failed with status ${response.status}`);
       }
 
       const data = await response.json();
-      const modelText = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response returned from Gemini.';
-      setAuditHistory(prev => [...prev, { role: 'model', text: modelText }]);
+      const modelJsonStr = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      
+      let summaryText = modelJsonStr;
+      try {
+        const parsed = JSON.parse(modelJsonStr);
+        summaryText = parsed.summary || 'No summary returned from Gemini.';
+        if (parsed.vulnerable_nodes) {
+          setVulnerabilities(parsed.vulnerable_nodes);
+        }
+      } catch (jsonErr) {
+        console.warn('Gemini response is not a valid JSON structure:', jsonErr);
+        summaryText = modelJsonStr;
+      }
+
+      setAuditHistory(prev => [...prev, { role: 'model', text: summaryText }]);
     } catch (err: any) {
       console.error('Global Audit failed:', err);
       setAuditHistory(prev => [
@@ -165,7 +242,7 @@ User prompt / query:
       if (line.trim().startsWith('```')) {
         if (inCodeBlock) {
           renderedElements.push(
-            <pre key={`code-${index}`} className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800/80 font-mono text-[9px] text-zinc-300 overflow-x-auto my-1.5 select-text">
+            <pre key={`code-${index}`} className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800/80 font-mono text-[11px] text-zinc-300 overflow-x-auto my-2 select-text">
               <code>{codeBlockLines.join('\n')}</code>
             </pre>
           );
@@ -189,22 +266,41 @@ User prompt / query:
             return <strong key={pIdx} className="font-bold text-zinc-100 dark:text-white">{part.slice(2, -2)}</strong>;
           }
           if (part.startsWith('`') && part.endsWith('`')) {
-            return <code key={pIdx} className="px-1.5 py-0.5 rounded bg-zinc-900 font-mono text-[9px] border border-zinc-800 text-purple-300">{part.slice(1, -1)}</code>;
+            return <code key={pIdx} className="px-1.5 py-0.5 rounded bg-zinc-900 font-mono text-[11px] border border-zinc-800 text-purple-300">{part.slice(1, -1)}</code>;
           }
           return part;
         });
       };
 
-      if (line.trim().startsWith('* ') || line.trim().startsWith('- ')) {
-        const content = line.trim().substring(2);
+      const trimmed = line.trim();
+      if (trimmed.startsWith('# ')) {
         renderedElements.push(
-          <li key={index} className="list-disc list-inside ml-2 my-0.5 leading-relaxed">
+          <h1 key={index} className="text-lg font-bold text-white mt-5 mb-2.5 border-b border-zinc-800/60 pb-1.5">
+            {processInline(trimmed.substring(2))}
+          </h1>
+        );
+      } else if (trimmed.startsWith('## ')) {
+        renderedElements.push(
+          <h2 key={index} className="text-base font-bold text-zinc-200 mt-4 mb-2">
+            {processInline(trimmed.substring(3))}
+          </h2>
+        );
+      } else if (trimmed.startsWith('### ')) {
+        renderedElements.push(
+          <h3 key={index} className="text-sm font-semibold text-zinc-300 mt-3 mb-1.5">
+            {processInline(trimmed.substring(4))}
+          </h3>
+        );
+      } else if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
+        const content = trimmed.substring(2);
+        renderedElements.push(
+          <li key={index} className="list-disc list-inside ml-3 my-1 leading-relaxed text-xs text-zinc-400">
             {processInline(content)}
           </li>
         );
-      } else if (line.trim()) {
+      } else if (trimmed) {
         renderedElements.push(
-          <p key={index} className="my-1.5 leading-relaxed">
+          <p key={index} className="my-2 leading-relaxed text-xs text-zinc-350">
             {processInline(line)}
           </p>
         );
@@ -414,7 +510,12 @@ User prompt / query:
             ) : (
               <div className="flex space-x-2">
                 <button
-                  onClick={() => runGlobalAudit()}
+                  onClick={() => {
+                    setIsAuditModalOpen(true);
+                    if (auditHistory.length === 0 && !auditLoading) {
+                      runGlobalAudit();
+                    }
+                  }}
                   className={`flex-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-md ${
                     theme === 'dark'
                       ? 'bg-gradient-to-r from-purple-900/40 to-cyan-900/40 hover:from-purple-800/50 hover:to-cyan-800/50 border border-purple-700/40 text-purple-200'
@@ -535,16 +636,36 @@ User prompt / query:
                   <p className={`text-[10px] ${theme === 'dark' ? 'text-zinc-500' : 'text-slate-500'}`}>Global Security & System Design Audit Report</p>
                 </div>
               </div>
-              <button
-                onClick={() => setIsAuditModalOpen(false)}
-                className={`p-1.5 border rounded-lg transition-all ${
-                  theme === 'dark'
-                    ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-                    : 'bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center space-x-2">
+                {auditHistory.length > 0 && !auditLoading && (
+                  <button
+                    onClick={() => {
+                      setAuditHistory([]);
+                      setVulnerabilities([]); // clear old visual highlights
+                      runGlobalAudit();
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all flex items-center space-x-1 hover:scale-[1.02] cursor-pointer ${
+                      theme === 'dark'
+                        ? 'bg-zinc-900 border-zinc-800 text-purple-300 hover:bg-zinc-800'
+                        : 'bg-slate-100 border-slate-200 text-purple-600 hover:bg-slate-200'
+                    }`}
+                    title="Run a fresh new global audit"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Re-run Audit</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsAuditModalOpen(false)}
+                  className={`p-1.5 border rounded-lg transition-all ${
+                    theme === 'dark'
+                      ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                      : 'bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Conversation / Report Stream */}

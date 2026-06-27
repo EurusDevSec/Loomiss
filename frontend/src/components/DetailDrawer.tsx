@@ -3,7 +3,7 @@ import { useGraphStore } from '../store/useGraphStore';
 import { X, Cpu, HardDrive, Terminal, Brain, Sparkles, Key, Send, Activity } from 'lucide-react';
 
 export default function DetailDrawer() {
-  const { selectedNodeId, nodes, metricsHistory, setSelectedNodeId, theme, codeChanges, geminiApiKey, setGeminiApiKey } = useGraphStore();
+  const { selectedNodeId, nodes, metricsHistory, setSelectedNodeId, theme, codeChanges, geminiApiKey, setGeminiApiKey, vulnerabilities, setVulnerabilities } = useGraphStore();
   const [logs, setLogs] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'telemetry' | 'ai'>('telemetry');
   const [aiHistory, setAiHistory] = useState<{ role: 'user' | 'model'; text: string }[]>([]);
@@ -223,8 +223,8 @@ export default function DetailDrawer() {
         type: node.data?.type || 'unknown',
         metadata: node.data?.metadata || {},
         metrics: {
-          cpuHistory: nodeHistory.cpu,
-          ramHistory: nodeHistory.ram,
+          cpuHistory,
+          ramHistory,
           currentCpu: currentCPU,
           currentRam: currentRAM,
         },
@@ -270,25 +270,109 @@ User prompt / follow-up:
         });
       }
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${geminiApiKey}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
+      const jsonSchema = {
+        type: "OBJECT",
+        properties: {
+          summary: { 
+            type: "STRING", 
+            description: "Concise diagnostic analysis and troubleshooting report in markdown style for the container." 
           },
-          body: JSON.stringify({ contents }),
+          is_vulnerable: { 
+            type: "BOOLEAN", 
+            description: "True if this container has security, architecture, or container configuration/log errors." 
+          },
+          severity: { 
+            type: "STRING", 
+            enum: ["HIGH", "MEDIUM", "LOW"],
+            description: "Severity of the issue (required if is_vulnerable is true)."
+          },
+          reason: { 
+            type: "STRING", 
+            description: "Short description of the diagnostic issue (required if is_vulnerable is true)." 
+          }
+        },
+        required: ["summary", "is_vulnerable"]
+      };
+
+      const payload = {
+        contents,
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: jsonSchema
         }
-      );
+      };
+
+      const callGeminiAPI = async (apiKey: string): Promise<Response> => {
+        const fetchWithRetry = async (model: string, retries = 3, delay = 1000): Promise<Response> => {
+          try {
+            const res = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+              }
+            );
+            if ((res.status === 503 || res.status === 429) && retries > 0) {
+              console.warn(`Gemini API returned status ${res.status} for model ${model}. Retrying in ${delay}ms...`);
+              await new Promise(r => setTimeout(r, delay));
+              return fetchWithRetry(model, retries - 1, delay * 2);
+            }
+            return res;
+          } catch (err) {
+            if (retries > 0) {
+              console.warn(`Gemini API fetch error for model ${model}. Retrying in ${delay}ms...`, err);
+              await new Promise(r => setTimeout(r, delay));
+              return fetchWithRetry(model, retries - 1, delay * 2);
+            }
+            throw err;
+          }
+        };
+
+        // Try gemini-3.5-flash first
+        let response = await fetchWithRetry('gemini-3.5-flash');
+        
+        // Fallback to gemini-2.5-flash if 503 or 429 occurs
+        if (!response.ok && (response.status === 503 || response.status === 429)) {
+          console.warn(`Gemini 3.5 Flash failed with ${response.status}. Falling back to stable gemini-2.5-flash...`);
+          response = await fetchWithRetry('gemini-2.5-flash');
+        }
+        
+        return response;
+      };
+
+      const response = await callGeminiAPI(geminiApiKey);
 
       if (!response.ok) {
         throw new Error(`API call failed: status ${response.status}`);
       }
 
       const resData = await response.json();
-      const modelText = resData.candidates?.[0]?.content?.parts?.[0]?.text || 'No response returned from Gemini.';
+      const modelJsonStr = resData.candidates?.[0]?.content?.parts?.[0]?.text || '';
       
-      setAiHistory(prev => [...prev, { role: 'model', text: modelText }]);
+      let summaryText = modelJsonStr;
+      try {
+        const parsed = JSON.parse(modelJsonStr);
+        summaryText = parsed.summary || 'No summary returned from Gemini.';
+        if (parsed.is_vulnerable) {
+          const otherVulns = vulnerabilities.filter(v => v.nodeId !== node.id);
+          const newVuln = {
+            nodeId: node.id,
+            severity: parsed.severity || 'MEDIUM',
+            reason: parsed.reason || 'Component diagnostics warning.'
+          };
+          setVulnerabilities([...otherVulns, newVuln]);
+        } else {
+          setVulnerabilities(vulnerabilities.filter(v => v.nodeId !== node.id));
+        }
+      } catch (jsonErr) {
+        console.warn('Gemini response is not a valid JSON structure:', jsonErr);
+        summaryText = modelJsonStr;
+      }
+      
+      setAiHistory(prev => [...prev, { role: 'model', text: summaryText }]);
     } catch (err: any) {
       console.error('Error running AI diagnostics:', err);
       setAiHistory(prev => [
@@ -310,7 +394,7 @@ User prompt / follow-up:
       if (line.trim().startsWith('```')) {
         if (inCodeBlock) {
           renderedElements.push(
-            <pre key={`code-${index}`} className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800/80 font-mono text-[9px] text-zinc-300 overflow-x-auto my-1.5 select-text">
+            <pre key={`code-${index}`} className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800/80 font-mono text-[10px] text-zinc-350 overflow-x-auto my-1.5 select-text">
               <code>{codeBlockLines.join('\n')}</code>
             </pre>
           );
@@ -331,25 +415,44 @@ User prompt / follow-up:
         const parts = str.split(/(\*\*.*?\*\*|`.*?`)/g);
         return parts.map((part, pIdx) => {
           if (part.startsWith('**') && part.endsWith('**')) {
-            return <strong key={pIdx} className="font-bold text-zinc-100 dark:text-white">{part.slice(2, -2)}</strong>;
+            return <strong key={pIdx} className="font-bold text-zinc-150 dark:text-white">{part.slice(2, -2)}</strong>;
           }
           if (part.startsWith('`') && part.endsWith('`')) {
-            return <code key={pIdx} className="px-1.5 py-0.5 rounded bg-zinc-900 font-mono text-[9px] border border-zinc-800 text-purple-300">{part.slice(1, -1)}</code>;
+            return <code key={pIdx} className="px-1.5 py-0.5 rounded bg-zinc-900 font-mono text-[10px] border border-zinc-800 text-purple-300">{part.slice(1, -1)}</code>;
           }
           return part;
         });
       };
 
-      if (line.trim().startsWith('* ') || line.trim().startsWith('- ')) {
-        const content = line.trim().substring(2);
+      const trimmed = line.trim();
+      if (trimmed.startsWith('# ')) {
         renderedElements.push(
-          <li key={index} className="list-disc list-inside ml-2 my-0.5 leading-relaxed">
+          <h1 key={index} className="text-sm font-bold text-white mt-4 mb-2 border-b border-zinc-800/60 pb-1">
+            {processInline(trimmed.substring(2))}
+          </h1>
+        );
+      } else if (trimmed.startsWith('## ')) {
+        renderedElements.push(
+          <h2 key={index} className="text-xs font-bold text-zinc-200 mt-3 mb-1.5">
+            {processInline(trimmed.substring(3))}
+          </h2>
+        );
+      } else if (trimmed.startsWith('### ')) {
+        renderedElements.push(
+          <h3 key={index} className="text-[11px] font-semibold text-zinc-300 mt-2 mb-1">
+            {processInline(trimmed.substring(4))}
+          </h3>
+        );
+      } else if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
+        const content = trimmed.substring(2);
+        renderedElements.push(
+          <li key={index} className="list-disc list-inside ml-2.5 my-0.5 leading-relaxed text-[10px] text-zinc-400">
             {processInline(content)}
           </li>
         );
-      } else if (line.trim()) {
+      } else if (trimmed) {
         renderedElements.push(
-          <p key={index} className="my-1.5 leading-relaxed">
+          <p key={index} className="my-1.5 leading-relaxed text-[10px] text-zinc-350">
             {processInline(line)}
           </p>
         );
@@ -360,9 +463,11 @@ User prompt / follow-up:
   };
 
   // Get metrics history for this node
-  const nodeHistory = metricsHistory[node.id] || { cpu: [], ram: [], network: [] };
-  const currentCPU = nodeHistory.cpu[nodeHistory.cpu.length - 1] || 0;
-  const currentRAM = nodeHistory.ram[nodeHistory.ram.length - 1] || 0;
+  const nodeHistory = metricsHistory?.[node.id] || { cpu: [], ram: [], network: [] };
+  const cpuHistory = nodeHistory.cpu || [];
+  const ramHistory = nodeHistory.ram || [];
+  const currentCPU = cpuHistory.length > 0 ? cpuHistory[cpuHistory.length - 1] : 0;
+  const currentRAM = ramHistory.length > 0 ? ramHistory[ramHistory.length - 1] : 0;
 
   return (
     <div
@@ -516,8 +621,8 @@ User prompt / follow-up:
                   </span>
                 </div>
                 <div className="h-[60px] flex items-center justify-center">
-                  {nodeHistory.cpu.length > 1 ? (
-                    drawSparkline(nodeHistory.cpu, '#06b6d4', 'cpu-gradient')
+                  {cpuHistory.length > 1 ? (
+                    drawSparkline(cpuHistory, '#06b6d4', 'cpu-gradient')
                   ) : (
                     <span className={`text-[10px] font-mono ${isDark ? 'text-zinc-600' : 'text-slate-300'}`}>Awaiting telemetry stats...</span>
                   )}
@@ -535,8 +640,8 @@ User prompt / follow-up:
                   </span>
                 </div>
                 <div className="h-[60px] flex items-center justify-center">
-                  {nodeHistory.ram.length > 1 ? (
-                    drawSparkline(nodeHistory.ram, '#a855f7', 'ram-gradient')
+                  {ramHistory.length > 1 ? (
+                    drawSparkline(ramHistory, '#a855f7', 'ram-gradient')
                   ) : (
                     <span className={`text-[10px] font-mono ${isDark ? 'text-zinc-600' : 'text-slate-300'}`}>Awaiting telemetry stats...</span>
                   )}

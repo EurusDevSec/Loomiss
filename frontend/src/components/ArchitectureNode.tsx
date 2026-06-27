@@ -27,6 +27,8 @@ export default function ArchitectureNode({ id, data, targetPosition, sourcePosit
   const [imgError, setImgError] = useState(false);
   const theme = useGraphStore((state) => state.theme);
   const codeChanges = useGraphStore((state) => state.codeChanges);
+  const vulnerabilities = useGraphStore((state) => state.vulnerabilities);
+  const nodeVuln = vulnerabilities?.find(v => v.nodeId === id);
 
   // Match modified files to this node
   const getNodeChanges = () => {
@@ -87,6 +89,7 @@ export default function ArchitectureNode({ id, data, targetPosition, sourcePosit
   else if (isDiffAdd) nodeBorderColor = '#22c55e';
   else if (isDiffDelete) nodeBorderColor = '#ef4444';
   else if (isCpuSpike) nodeBorderColor = '#ef4444';
+  else if (nodeVuln) nodeBorderColor = nodeVuln.severity === 'HIGH' ? '#ef4444' : '#f59e0b';
 
   let nodeBoxShadow = theme === 'dark' 
     ? `0 4px 20px rgba(0, 0, 0, 0.35), 0 0 12px ${data.borderClr}22` 
@@ -100,6 +103,10 @@ export default function ArchitectureNode({ id, data, targetPosition, sourcePosit
     nodeBoxShadow = '0 0 20px rgba(239, 68, 68, 0.4)';
   } else if (isCpuSpike) {
     nodeBoxShadow = '0 0 25px rgba(239, 68, 68, 0.6)';
+  } else if (nodeVuln) {
+    nodeBoxShadow = nodeVuln.severity === 'HIGH' 
+      ? '0 0 20px rgba(239, 68, 68, 0.5)' 
+      : '0 0 20px rgba(245, 158, 11, 0.4)';
   }
 
   const nodeOpacity = isDiffDelete ? 0.5 : 1;
@@ -124,6 +131,21 @@ export default function ArchitectureNode({ id, data, targetPosition, sourcePosit
         position={targetPosition || Position.Top}
         className="!bg-zinc-400 !w-2.5 !h-2.5 !border-zinc-950 hover:!bg-cyan-400 transition-colors"
       />
+
+      {/* Vulnerability Alert Badge */}
+      {nodeVuln && (
+        <div 
+          className="absolute -top-3 -left-2 px-2 py-0.5 rounded-full text-[9px] font-bold font-mono border shadow-md flex items-center space-x-1 pointer-events-none select-none z-10 animate-pulse"
+          style={{
+            backgroundColor: nodeVuln.severity === 'HIGH' ? 'rgba(239, 68, 68, 0.18)' : 'rgba(245, 158, 11, 0.18)',
+            borderColor: nodeVuln.severity === 'HIGH' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(245, 158, 11, 0.4)',
+            color: nodeVuln.severity === 'HIGH' ? '#ef4444' : '#f59e0b',
+          }}
+          title={`${nodeVuln.severity}: ${nodeVuln.reason}`}
+        >
+          <span>⚠️ {nodeVuln.severity}</span>
+        </div>
+      )}
 
       {/* Code changes badge */}
       {nodeChanges.length > 0 && (

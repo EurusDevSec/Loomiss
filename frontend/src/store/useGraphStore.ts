@@ -15,6 +15,7 @@ interface GraphState {
   metricsHistory: Record<string, { cpu: number[]; ram: number[]; network: number[] }>;
   codeChanges: { path: string; status: string; additions: number; deletions: number; }[];
   geminiApiKey: string | null;
+  vulnerabilities: { nodeId: string; severity: 'HIGH' | 'MEDIUM' | 'LOW'; reason: string; }[];
   
   // Actions
   setElements: (nodes: Node[], edges: Edge[]) => void;
@@ -26,6 +27,7 @@ interface GraphState {
   setTheme: (theme: 'light' | 'dark') => void;
   setSelectedNodeId: (id: string | null) => void;
   setGeminiApiKey: (key: string | null) => void;
+  setVulnerabilities: (vulns: { nodeId: string; severity: 'HIGH' | 'MEDIUM' | 'LOW'; reason: string; }[]) => void;
 }
 
 // Hỗ trợ map ID, nhãn (label) và hình ảnh sang slug logo tương ứng của Simple Icons
@@ -311,6 +313,7 @@ export const useGraphStore = create<GraphState>((set, get) => {
     metricsHistory: {},
     codeChanges: [],
     geminiApiKey: localStorage.getItem('loomiss_gemini_api_key') || null,
+    vulnerabilities: [],
     setTheme: (theme) => set({ theme }),
     setSelectedNodeId: (id) => set({ selectedNodeId: id }),
     setGeminiApiKey: (key) => {
@@ -321,6 +324,7 @@ export const useGraphStore = create<GraphState>((set, get) => {
       }
       set({ geminiApiKey: key });
     },
+    setVulnerabilities: (vulns) => set({ vulnerabilities: vulns }),
 
     setElements: (nodes, edges) => {
       const { direction, nodes: currentNodes, edges: currentEdges } = get();
@@ -497,7 +501,7 @@ export const useGraphStore = create<GraphState>((set, get) => {
             // Xử lý các loại tin nhắn từ Go daemon
             switch (data.type) {
               case 'UPDATE_GRAPH':
-                set({ error: null });
+                set({ error: null, vulnerabilities: [] });
                 if (data.nodes) {
                   const { nodes, edges } = formatGraphData(data.nodes, data.edges || []);
                   get().setElements(nodes, edges);
