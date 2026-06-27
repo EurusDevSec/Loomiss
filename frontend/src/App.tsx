@@ -35,6 +35,7 @@ export default function App() {
     geminiApiKey,
     setGeminiApiKey,
     setVulnerabilities,
+    selectedNodeId,
   } = useGraphStore();
 
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
@@ -187,13 +188,13 @@ User prompt / query:
           }
         };
 
-        // Try gemini-3.5-flash first
-        let response = await fetchWithRetry('gemini-3.5-flash');
+        // Try stable and fast gemini-2.5-flash first
+        let response = await fetchWithRetry('gemini-2.5-flash');
         
-        // Fallback to gemini-2.5-flash if 503 or 429 occurs
+        // Fallback to gemini-3.5-flash if 503 or 429 occurs
         if (!response.ok && (response.status === 503 || response.status === 429)) {
-          console.warn(`Gemini 3.5 Flash failed with ${response.status}. Falling back to stable gemini-2.5-flash...`);
-          response = await fetchWithRetry('gemini-2.5-flash');
+          console.warn(`Gemini 2.5 Flash failed with ${response.status}. Falling back to gemini-3.5-flash...`);
+          response = await fetchWithRetry('gemini-3.5-flash');
         }
         
         return response;
@@ -212,8 +213,10 @@ User prompt / query:
       try {
         const parsed = JSON.parse(modelJsonStr);
         summaryText = parsed.summary || 'No summary returned from Gemini.';
-        if (parsed.vulnerable_nodes) {
+        if (parsed.vulnerable_nodes && Array.isArray(parsed.vulnerable_nodes)) {
           setVulnerabilities(parsed.vulnerable_nodes);
+        } else {
+          setVulnerabilities([]);
         }
       } catch (jsonErr) {
         console.warn('Gemini response is not a valid JSON structure:', jsonErr);
@@ -616,7 +619,7 @@ User prompt / query:
         </aside>
         
         {/* Node detail sliding drawer */}
-        <DetailDrawer />
+        {selectedNodeId && <DetailDrawer />}
       </div>
 
       {/* Global AI Audit Overlay Modal */}

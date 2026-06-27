@@ -331,13 +331,13 @@ User prompt / follow-up:
           }
         };
 
-        // Try gemini-3.5-flash first
-        let response = await fetchWithRetry('gemini-3.5-flash');
+        // Try stable and fast gemini-2.5-flash first
+        let response = await fetchWithRetry('gemini-2.5-flash');
         
-        // Fallback to gemini-2.5-flash if 503 or 429 occurs
+        // Fallback to gemini-3.5-flash if 503 or 429 occurs
         if (!response.ok && (response.status === 503 || response.status === 429)) {
-          console.warn(`Gemini 3.5 Flash failed with ${response.status}. Falling back to stable gemini-2.5-flash...`);
-          response = await fetchWithRetry('gemini-2.5-flash');
+          console.warn(`Gemini 2.5 Flash failed with ${response.status}. Falling back to gemini-3.5-flash...`);
+          response = await fetchWithRetry('gemini-3.5-flash');
         }
         
         return response;
@@ -357,7 +357,7 @@ User prompt / follow-up:
         const parsed = JSON.parse(modelJsonStr);
         summaryText = parsed.summary || 'No summary returned from Gemini.';
         if (parsed.is_vulnerable) {
-          const otherVulns = vulnerabilities.filter(v => v.nodeId !== node.id);
+          const otherVulns = Array.isArray(vulnerabilities) ? vulnerabilities.filter(v => v.nodeId !== node.id) : [];
           const newVuln = {
             nodeId: node.id,
             severity: parsed.severity || 'MEDIUM',
@@ -365,7 +365,7 @@ User prompt / follow-up:
           };
           setVulnerabilities([...otherVulns, newVuln]);
         } else {
-          setVulnerabilities(vulnerabilities.filter(v => v.nodeId !== node.id));
+          setVulnerabilities(Array.isArray(vulnerabilities) ? vulnerabilities.filter(v => v.nodeId !== node.id) : []);
         }
       } catch (jsonErr) {
         console.warn('Gemini response is not a valid JSON structure:', jsonErr);
