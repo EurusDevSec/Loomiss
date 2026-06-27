@@ -193,6 +193,7 @@ func (p *TerraformParser) Parse(workspacePath string) ([]domain.Node, []domain.E
 func GetDefaultParsers() []domain.ConfigParser {
 	return []domain.ConfigParser{
 		&DockerComposeParser{},
+		&KubernetesParser{},
 		&NginxParser{},
 		&TerraformParser{},
 		&AppLevelParser{},

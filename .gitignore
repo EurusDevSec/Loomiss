@@ -1,5 +1,8 @@
 # Loomiss Runtime Directories
 .loomiss/
 
+# Exclude Google Cloud Microservices Demo testing folder
+microservices-demo/
+
 # Logs
 *.log
