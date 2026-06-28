@@ -36,6 +36,8 @@ export default function App() {
     setGeminiApiKey,
     setVulnerabilities,
     selectedNodeId,
+    performanceMode,
+    setPerformanceMode,
     historicMode,
     historicCommit,
     setHistoricMode,
@@ -585,6 +587,42 @@ User prompt / query:
               >
                 <Moon className="h-3.5 w-3.5" />
                 <span>Dark</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Performance Optimization Mode */}
+          <div className="flex flex-col space-y-2">
+            <div className="flex justify-between items-center">
+              <label className={`text-xs font-mono ${theme === 'dark' ? 'text-zinc-500' : 'text-slate-500'}`}>Performance Mode</label>
+              {nodes.length > 15 && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono font-bold animate-pulse">
+                  Auto-Lag-Free
+                </span>
+              )}
+            </div>
+            <div className={`grid grid-cols-2 gap-2 p-1 rounded-lg border transition-all ${
+              theme === 'dark' ? 'bg-zinc-950 border-zinc-800/80' : 'bg-slate-100 border-slate-200'
+            }`}>
+              <button
+                onClick={() => setPerformanceMode(false)}
+                className={`py-1.5 text-xs font-mono font-bold rounded-md flex items-center justify-center space-x-1.5 transition-all ${
+                  !performanceMode
+                    ? (theme === 'dark' ? 'bg-zinc-800 text-cyan-400 border border-zinc-700/50' : 'bg-white text-cyan-600 border border-slate-200 shadow-sm')
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                <span>Rich Visuals</span>
+              </button>
+              <button
+                onClick={() => setPerformanceMode(true)}
+                className={`py-1.5 text-xs font-mono font-bold rounded-md flex items-center justify-center space-x-1.5 transition-all ${
+                  performanceMode
+                    ? (theme === 'dark' ? 'bg-zinc-800 text-cyan-400 border border-zinc-700/50' : 'bg-white text-cyan-600 border border-slate-200 shadow-sm')
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <span>Lag-Free</span>
               </button>
             </div>
           </div>

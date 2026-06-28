@@ -23,6 +23,9 @@ interface GraphState {
   nodeStatuses: Record<string, 'ONLINE' | 'OFFLINE'>;
   routingTrace: string[];
   
+  // Performance Optimization Mode
+  performanceMode: boolean;
+  
   // Actions
   setElements: (nodes: Node[], edges: Edge[]) => void;
   setDirection: (dir: 'TB' | 'LR') => void;
@@ -34,6 +37,7 @@ interface GraphState {
   setSelectedNodeId: (id: string | null) => void;
   setGeminiApiKey: (key: string | null) => void;
   setVulnerabilities: (vulns: { nodeId: string; severity: 'HIGH' | 'MEDIUM' | 'LOW'; reason: string; }[]) => void;
+  setPerformanceMode: (mode: boolean) => void;
   
   // Phase 6 Digital Twin Actions
   setHistoricMode: (mode: boolean, commit?: string) => void;
@@ -339,6 +343,8 @@ export const useGraphStore = create<GraphState>((set, get) => {
     historicCommit: 'active',
     nodeStatuses: {},
     routingTrace: [],
+    // Performance Optimization Mode
+    performanceMode: false,
 
     setTheme: (theme) => set({ theme }),
     setSelectedNodeId: (id) => set({ selectedNodeId: id }),
@@ -351,6 +357,7 @@ export const useGraphStore = create<GraphState>((set, get) => {
       set({ geminiApiKey: key });
     },
     setVulnerabilities: (vulns) => set({ vulnerabilities: vulns }),
+    setPerformanceMode: (mode) => set({ performanceMode: mode }),
 
     // Phase 6 Digital Twin Actions
     setHistoricMode: (mode, commit) => set({ historicMode: mode, historicCommit: commit || 'active' }),
@@ -376,7 +383,12 @@ export const useGraphStore = create<GraphState>((set, get) => {
     }),
 
     setElements: (nodes, edges) => {
-      const { direction, nodes: currentNodes, edges: currentEdges } = get();
+      const { direction, nodes: currentNodes, edges: currentEdges, performanceMode } = get();
+      
+      // Auto-enable performance mode on large graphs (over 15 nodes)
+      if (nodes.length > 15 && !performanceMode) {
+        set({ performanceMode: true });
+      }
       
       // Chỉ tính toán Diff nếu có đồ thị cũ thực tế (không phải lúc khởi chạy hoặc mock)
       const isInitialOrMock = currentNodes.length <= 4 && currentNodes.some(n => n.id === 'nginx' && n.parentId === undefined);

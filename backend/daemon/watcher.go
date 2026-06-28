@@ -21,31 +21,8 @@ func StartWatcher(workspacePath string, hub *Hub) error {
 	}
 
 	cleanWorkspacePath := filepath.Clean(workspacePath)
-	// Đệ quy thêm tất cả các thư mục con vào watcher (loại trừ các thư mục không cần thiết)
-	err = filepath.Walk(cleanWorkspacePath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if info.IsDir() {
-			if filepath.Clean(path) != cleanWorkspacePath {
-				name := info.Name()
-				if strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin" {
-					return filepath.SkipDir
-				}
-			}
-			err = watcher.Add(path)
-			if err != nil {
-				fmt.Printf("[Loomiss] Warning: failed to watch directory %s: %v\n", path, err)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		watcher.Close()
-		return fmt.Errorf("failed to walk workspace directory: %w", err)
-	}
 
-	// Goroutine xử lý và lọc sự kiện
+	// Goroutine xử lý và lọc sự kiện (chạy trước khi gọi Add để tránh deadlock trên Windows)
 	go func() {
 		defer watcher.Close()
 
@@ -120,6 +97,30 @@ func StartWatcher(workspacePath string, hub *Hub) error {
 			}
 		}
 	}()
+
+	// Đệ quy thêm tất cả các thư mục con vào watcher (loại trừ các thư mục không cần thiết)
+	err = filepath.Walk(cleanWorkspacePath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			if filepath.Clean(path) != cleanWorkspacePath {
+				name := info.Name()
+				if strings.HasPrefix(name, ".") || name == "node_modules" || name == "dist" || name == "bin" {
+					return filepath.SkipDir
+				}
+			}
+			err = watcher.Add(path)
+			if err != nil {
+				fmt.Printf("[Loomiss] Warning: failed to watch directory %s: %v\n", path, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		watcher.Close()
+		return fmt.Errorf("failed to walk workspace directory: %w", err)
+	}
 
 	return nil
 }

@@ -23,6 +23,7 @@ export default function TrafficEdge({
   const nodes = useNodes();
   const [isHovered, setIsHovered] = useState(false);
   const selectedNodeId = useGraphStore(state => state.selectedNodeId);
+  const performanceMode = useGraphStore(state => state.performanceMode);
 
   let edgePath = '';
   let labelX = 0;
@@ -53,7 +54,8 @@ export default function TrafficEdge({
       return node;
     });
 
-  const smartEdgeResult = getSmartEdge({
+  // Bypass smart routing if performanceMode is enabled
+  const smartEdgeResult = performanceMode ? null : getSmartEdge({
     sourcePosition,
     targetPosition,
     sourceX,
@@ -63,7 +65,7 @@ export default function TrafficEdge({
     nodes: absoluteNodes,
     options: {
       nodePadding: 16,
-      gridRatio: 10
+      gridRatio: 25 // Optimized gridRatio for faster pathfinding calculations
     }
   });
 
@@ -90,11 +92,11 @@ export default function TrafficEdge({
   // Calculate speed of particles based on simulated network traffic (bytes/sec)
   const network = data?.network as number | undefined;
   let dur = '1.8s';
-  let showParticle = true;
+  let showParticle = !performanceMode; // Disable particles animation in performanceMode to reduce rendering overhead
 
   if (isDependsOn) {
     showParticle = false;
-  } else if (network !== undefined) {
+  } else if (network !== undefined && showParticle) {
     if (network === 0) {
       showParticle = false;
     } else if (network > 50000) {
