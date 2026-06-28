@@ -118,11 +118,26 @@ export default function TrafficEdge({
   const particleColor = activeColor;
   const particleRadius = isHovered ? 5.5 : 3.5;
 
+  const isDashed = isDependsOn || 
+    (typeof label === 'string' && (
+      label.toLowerCase().includes('policy') || 
+      label.toLowerCase().includes('role') || 
+      label.toLowerCase().includes('vpc_id') || 
+      label.toLowerCase().includes('subnet_id') || 
+      label.toLowerCase().includes('security_group') || 
+      label.toLowerCase().includes('association') ||
+      label.toLowerCase().includes('route_table') ||
+      label.toLowerCase().includes('cluster') ||
+      label.toLowerCase().includes('task_definition') ||
+      label.toLowerCase().includes('rest_api_id')
+    ));
+
   const currentStyle = {
     ...style,
     strokeWidth: isHovered ? 4.5 : (style.strokeWidth || 2),
     stroke: activeColor,
     opacity: currentOpacity,
+    strokeDasharray: isDashed ? '5,5' : undefined,
     transition: 'stroke 0.2s, stroke-width 0.2s, opacity 0.2s',
   };
 

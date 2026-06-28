@@ -25,6 +25,11 @@ func StartServer(port int) error {
 	// Tự động giải phóng cổng nếu bị chiếm dụng trước đó
 	killProcessOnPort(port)
 
+	watchDir := "."
+	if envDir := os.Getenv("LOOMISS_WATCH_DIR"); envDir != "" {
+		watchDir = envDir
+	}
+
 	// Lấy thư mục dist bên trong embed.FS
 	subFS, err := fs.Sub(frontendFS, "dist")
 	if err != nil {
@@ -34,7 +39,7 @@ func StartServer(port int) error {
 	hub := NewHub()
 
 	// Khởi chạy File Watcher giám sát thư mục hiện tại ở background
-	err = StartWatcher(".", hub)
+	err = StartWatcher(watchDir, hub)
 	if err != nil {
 		fmt.Printf("[Loomiss] Warning: failed to start file watcher: %v\n", err)
 	}
@@ -56,11 +61,11 @@ func StartServer(port int) error {
 		w.Header().Set("Content-Type", "application/json")
 		
 		commit := r.URL.Query().Get("commit")
-		targetPath := "."
+		targetPath := watchDir
 		var err error
 		
 		if commit != "" && commit != "active" {
-			targetPath, err = extractCommitConfigs(".", commit)
+			targetPath, err = extractCommitConfigs(watchDir, commit)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				json.NewEncoder(w).Encode(map[string]string{"error": "Không thể trích xuất lịch sử commit: " + err.Error()})
@@ -83,7 +88,7 @@ func StartServer(port int) error {
 		w.Header().Set("Content-Type", "application/json")
 		
 		cmd := exec.Command("git", "log", "-n", "15", "--oneline")
-		cmd.Dir = "."
+		cmd.Dir = watchDir
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)

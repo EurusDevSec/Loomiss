@@ -74,6 +74,35 @@ const getLogoSlug = (nodeId: string, type: string, label: string, image?: string
 
   const cleanedTerms = rawStrings.map(cleanTerm).filter(Boolean);
 
+  // 3a. AWS resource_type -> specific icon slug (highest priority for AWS services)
+  const awsResourceTypeMap: Record<string, string> = {
+    'aws_lambda_function': 'awslambda',
+    'aws_dynamodb_table': 'awsdynamodb',
+    'aws_cloudfront_distribution': 'awscloudfront',
+    'aws_api_gateway_rest_api': 'awsapigateway',
+    'aws_api_gateway_integration': 'awsapigateway',
+    'aws_apigatewayv2_api': 'awsapigateway',
+    'aws_ecs_cluster': 'awsecs',
+    'aws_ecs_service': 'awsecs',
+    'aws_ecs_task_definition': 'awsfargate',
+    'aws_media_connect_flow': 'awsmediaconnect',
+    'aws_media_live_channel': 'awsmedialive',
+    'aws_media_package_channel': 'awsmediapackage',
+    'aws_medialive_channel': 'awsmedialive',
+    'aws_mediaconnect_flow': 'awsmediaconnect',
+    'aws_mediapackage_channel': 'awsmediapackage',
+    'aws_iam_role': 'awsiam',
+    'aws_iam_role_policy': 'awsiam',
+    'aws_iam_policy': 'awsiam',
+    'aws_transcribe_vocabulary': 'awstranscribe',
+    'aws_route53_zone': 'amazonroute53',
+    'aws_route53_record': 'amazonroute53',
+  };
+  const resType = (metadata?.resource_type || '').toLowerCase();
+  if (resType && awsResourceTypeMap[resType]) {
+    return awsResourceTypeMap[resType];
+  }
+
   // 3. Official Brand Mapping (Synonyms that don't match simple slugification)
   const techMap: Record<string, string> = {
     'next.js': 'nextdotjs',
@@ -131,7 +160,20 @@ const getLogoSlug = (nodeId: string, type: string, label: string, image?: string
     'elb': 'amazonelasticloadbalancing',
     'waf': 'amazonwaf',
     'aws-waf': 'amazonwaf',
-    'aws': 'aws',
+    'aws': 'amazonaws',
+    'lambda': 'awslambda',
+    'cloudfront': 'awscloudfront',
+    'dynamodb': 'awsdynamodb',
+    'apigateway': 'awsapigateway',
+    'api_gateway': 'awsapigateway',
+    'media_connect': 'awsmediaconnect',
+    'media_live': 'awsmedialive',
+    'media_package': 'awsmediapackage',
+    'fargate': 'awsfargate',
+    'ecs': 'awsecs',
+    'bedrock': 'amazonaws',
+    'transcribe': 'awstranscribe',
+    'iam': 'awsiam',
     'gcp': 'googlecloud',
     'google-cloud': 'googlecloud',
     'azure': 'microsoftazure',
@@ -172,9 +214,111 @@ const getLogoSlug = (nodeId: string, type: string, label: string, image?: string
   return null;
 };;
 
-// Hàm chuẩn hóa dữ liệu đồ thị thô từ Backend thành các styled Nodes/Edges của React Flow
 const formatGraphData = (rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edges: Edge[] } => {
-  const formattedNodes: Node[] = rawNodes.map((node) => {
+  // 1. Detect if we have AWS resources and reconstruct hierarchy / edges
+  const hasAWS = rawNodes.some(n => n.metadata && n.metadata.provider === 'aws');
+
+  let processedRawNodes = [...rawNodes];
+  let processedRawEdges = [...rawEdges];
+
+  if (hasAWS) {
+    // Add AWS Cloud & Region groups if not present
+    if (!processedRawNodes.some(n => n.id === 'aws-cloud-group')) {
+      processedRawNodes.push({
+        id: 'aws-cloud-group',
+        label: '☁️ AWS Cloud',
+        type: 'group',
+      });
+    }
+    if (!processedRawNodes.some(n => n.id === 'aws-region-group')) {
+      processedRawNodes.push({
+        id: 'aws-region-group',
+        label: '🌐 Region (us-east-1)',
+        type: 'group',
+        parentId: 'aws-cloud-group',
+      });
+    }
+
+    // Set parent ID for AWS resources
+    processedRawNodes = processedRawNodes.map(node => {
+      if (node.metadata && node.metadata.provider === 'aws') {
+        const resType = node.metadata.resource_type || '';
+        if (resType === 'aws_cloudfront_distribution' || resType === 'aws_route53_zone') {
+          return { ...node, parentId: 'aws-cloud-group' };
+        } else {
+          return { ...node, parentId: 'aws-region-group' };
+        }
+      }
+      return node;
+    });
+
+    // Remove old terraform-group
+    processedRawNodes = processedRawNodes.filter(n => n.id !== 'terraform-group');
+
+    // Helper to dynamically inject missing AWS edges
+    const addAWSLink = (src: string, tgt: string, label: string) => {
+      const edgeKey = `${src}-${tgt}`;
+      if (!processedRawEdges.some(e => e.source === src && e.target === tgt)) {
+        processedRawEdges.push({
+          id: edgeKey,
+          source: src,
+          target: tgt,
+          label: label
+        });
+      }
+    };
+
+    // Find full resource IDs in processedRawNodes
+    const findNodeIdByPrefix = (prefix: string) => {
+      const match = processedRawNodes.find(n => n.id.toLowerCase().includes(prefix.toLowerCase()));
+      return match ? match.id : null;
+    };
+
+    const mediaConnectId = findNodeIdByPrefix('media_connect');
+    const mediaLiveId = findNodeIdByPrefix('media_live');
+    const mediaPackageId = findNodeIdByPrefix('media_package');
+    const cdnId = findNodeIdByPrefix('cloudfront') || findNodeIdByPrefix('cdn');
+    const apiId = findNodeIdByPrefix('api_gateway') || findNodeIdByPrefix('api');
+    const lambdaId = findNodeIdByPrefix('lambda') || findNodeIdByPrefix('event_handler');
+    const dbId = findNodeIdByPrefix('dynamodb') || findNodeIdByPrefix('metadata_store');
+    const fargateId = findNodeIdByPrefix('fargate') || findNodeIdByPrefix('fargate_service');
+    const transcribeId = findNodeIdByPrefix('transcribe') || findNodeIdByPrefix('transcribe_processor');
+    const policyId = findNodeIdByPrefix('policy') || findNodeIdByPrefix('fargate_ai_policy');
+
+    // Inject missing edges based on live stream architecture flow:
+    if (mediaConnectId && mediaLiveId) {
+      addAWSLink(mediaConnectId, mediaLiveId, 'Video Ingest');
+    }
+    if (mediaLiveId && mediaPackageId) {
+      addAWSLink(mediaLiveId, mediaPackageId, 'Stream Packaging');
+    }
+    if (mediaPackageId && cdnId) {
+      addAWSLink(mediaPackageId, cdnId, 'CDN Origin');
+    }
+    if (mediaPackageId && lambdaId) {
+      addAWSLink(mediaPackageId, lambdaId, 'Event Trigger');
+    }
+    if (lambdaId && dbId) {
+      addAWSLink(lambdaId, dbId, 'Metadata Store');
+    }
+    if (fargateId && transcribeId) {
+      addAWSLink(fargateId, transcribeId, 'Audio Stream');
+    }
+    if (fargateId && dbId) {
+      addAWSLink(fargateId, dbId, 'Metadata Store');
+    }
+    if (transcribeId && dbId) {
+      addAWSLink(transcribeId, dbId, 'Write Transcripts');
+    }
+    if (cdnId && apiId) {
+      addAWSLink(cdnId, apiId, 'API Gateway Integration');
+    }
+    if (policyId && fargateId) {
+      addAWSLink(policyId, fargateId, 'IAM Role Policy');
+    }
+  }
+
+  const formattedNodes: Node[] = processedRawNodes.map((node) => {
     if (node.type === 'group') {
       const idLower = node.id.toLowerCase();
       let borderClr = '#27272a';
@@ -200,6 +344,7 @@ const formatGraphData = (rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edg
       return {
         id: node.id,
         type: 'group',
+        parentId: node.parentId,
         data: {
           label: node.label || node.id,
           borderClr,
@@ -214,19 +359,37 @@ const formatGraphData = (rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edg
     const borderClr = isNginx ? '#06b6d4' : isApp ? '#a855f7' : '#f59e0b';
     const shadowClr = isNginx ? 'rgba(6, 182, 212, 0.3)' : isApp ? 'rgba(168, 85, 247, 0.3)' : 'rgba(245, 158, 11, 0.3)';
     
-    // Làm sạch label khỏi các emoji và ký tự biểu cảm lộn xộn để có giao diện phẳng chuyên nghiệp
     let cleanLabel = node.label || node.id;
-    // Bỏ tất cả emoji phổ biến và cụ thể
     cleanLabel = cleanLabel.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2700}-\u{27BF}]|[\u{2600}-\u{26FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E6}-\u{1F1FF}]|[\u{2B50}]/gu, '').trim();
     cleanLabel = cleanLabel.replace(/🐘|🐬|💾|📡|⚡|❤️|🐳|🌐|⚙️|🗄️|☁️|🐙|🧓|🔥|📊/g, '').trim();
 
     const logoSlug = getLogoSlug(node.id, node.type, cleanLabel, node.metadata?.image, node.metadata);
-    const logoUrl = logoSlug === 'redis'
+
+    // Official AWS architecture icons from awslabs/aws-icons-for-plantuml
+    const AWS_ICON_BASE = 'https://raw.githubusercontent.com/awslabs/aws-icons-for-plantuml/v18.0/dist';
+    const awsIconMap: Record<string, string> = {
+      'awslambda':       `${AWS_ICON_BASE}/Compute/Lambda.png`,
+      'awsdynamodb':     `${AWS_ICON_BASE}/Database/DynamoDB.png`,
+      'awscloudfront':   `${AWS_ICON_BASE}/NetworkingContentDelivery/CloudFront.png`,
+      'awsapigateway':   `${AWS_ICON_BASE}/ApplicationIntegration/APIGateway.png`,
+      'awsfargate':      `${AWS_ICON_BASE}/Containers/Fargate.png`,
+      'awsecs':          `${AWS_ICON_BASE}/Containers/ElasticContainerService.png`,
+      'awsmediaconnect': `${AWS_ICON_BASE}/MediaServices/ElementalMediaConnect.png`,
+      'awsmedialive':    `${AWS_ICON_BASE}/MediaServices/ElementalMediaLive.png`,
+      'awsmediapackage': `${AWS_ICON_BASE}/MediaServices/ElementalMediaPackage.png`,
+      'awstranscribe':   `${AWS_ICON_BASE}/MachineLearning/Transcribe.png`,
+      'awsiam':          `${AWS_ICON_BASE}/SecurityIdentityCompliance/IdentityandAccessManagement.png`,
+      'amazonroute53':   `${AWS_ICON_BASE}/NetworkingContentDelivery/Route53.png`,
+    };
+
+    const logoUrl = logoSlug && awsIconMap[logoSlug]
+      ? awsIconMap[logoSlug]
+      : logoSlug === 'redis'
       ? 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/redis/redis-original.svg'
-      : (logoSlug === 'aws' || logoSlug === 'amazonwebservices')
-      ? 'https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/amazonwebservices/amazonwebservices-original.svg'
+      : (logoSlug === 'aws' || logoSlug === 'amazonwebservices' || logoSlug === 'amazonaws')
+      ? 'https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/amazonaws.svg'
       : logoSlug
-      ? `https://cdn.simpleicons.org/${logoSlug}`
+      ? `https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/${logoSlug}.svg`
       : null;
 
     return {
@@ -247,7 +410,7 @@ const formatGraphData = (rawNodes: any[], rawEdges: any[]): { nodes: Node[]; edg
     };
   });
 
-  const formattedEdges: Edge[] = rawEdges.map((edge) => {
+  const formattedEdges: Edge[] = processedRawEdges.map((edge) => {
     const isNginx = edge.source === 'nginx' || edge.source.includes('nginx') || edge.source.includes('gateway');
     const strokeClr = isNginx ? '#06b6d4' : '#a855f7';
     
@@ -318,7 +481,7 @@ const mockEdges: Edge[] = [
 
 // Áp dụng layout tự động cho dữ liệu mock
 const formattedMock = formatGraphData(mockRawNodes, mockEdges);
-const initialLayout = getLayoutedElements(formattedMock.nodes, formattedMock.edges, 'TB');
+const initialLayout = getLayoutedElements(formattedMock.nodes, formattedMock.edges, 'LR');
 
 export const useGraphStore = create<GraphState>((set, get) => {
   let ws: WebSocket | null = null;
@@ -327,7 +490,7 @@ export const useGraphStore = create<GraphState>((set, get) => {
   return {
     nodes: initialLayout.nodes,
     edges: initialLayout.edges,
-    direction: 'TB',
+    direction: 'LR',
     error: null,
     activeAgentNode: null,
     theme: 'light',

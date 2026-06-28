@@ -75,8 +75,9 @@ func ParseTerraformDirectory(dirPath string) ([]domain.Node, []domain.Edge, erro
 					ParentID: "terraform-group",
 				})
 
-				// Tìm các tham chiếu biến bên trong các thuộc tính
-				for _, attr := range block.Body.Attributes {
+				// Tìm các tham chiếu biến bên trong các thuộc tính (kể cả thuộc tính trong các block lồng nhau)
+				allAttrs := collectAllAttributes(block.Body)
+				for _, attr := range allAttrs {
 					refs := extractReferences(attr.Expr)
 					for _, ref := range refs {
 						edges = append(edges, domain.Edge{
@@ -129,4 +130,16 @@ func extractReferences(expr hcl.Expression) []string {
 		}
 	}
 	return refs
+}
+
+// collectAllAttributes collects attributes recursively from a body and all its nested blocks
+func collectAllAttributes(body *hclsyntax.Body) []*hclsyntax.Attribute {
+	var attrs []*hclsyntax.Attribute
+	for _, attr := range body.Attributes {
+		attrs = append(attrs, attr)
+	}
+	for _, block := range body.Blocks {
+		attrs = append(attrs, collectAllAttributes(block.Body)...)
+	}
+	return attrs
 }

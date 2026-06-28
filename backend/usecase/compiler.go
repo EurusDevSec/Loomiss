@@ -86,6 +86,61 @@ func CompileGraph(workspacePath string) (*domain.GraphSchema, error) {
 	}
 	// --- Giai đoạn Post-Processing (Tối ưu hóa và hợp nhất đồ thị) ---
 
+	// --- Giai đoạn Post-Processing: AWS Resource nested grouping ---
+	hasAWSResources := false
+	for _, node := range nodeMap {
+		if node.Metadata != nil {
+			if provider, ok := node.Metadata["provider"]; ok && provider == "aws" {
+				hasAWSResources = true
+				break
+			}
+		}
+	}
+
+	if hasAWSResources {
+		// Tạo group cha: AWS Cloud
+		nodeMap["aws-cloud-group"] = domain.Node{
+			ID:    "aws-cloud-group",
+			Label: "☁️ AWS Cloud",
+			Type:  "group",
+		}
+		// Tạo group con: Region
+		nodeMap["aws-region-group"] = domain.Node{
+			ID:       "aws-region-group",
+			Label:    "🌐 Region (us-east-1)",
+			Type:     "group",
+			ParentID: "aws-cloud-group",
+		}
+
+		// Ánh xạ các node AWS vào nhóm tương ứng
+		for id, node := range nodeMap {
+			if node.Metadata != nil {
+				if provider, ok := node.Metadata["provider"]; ok && provider == "aws" {
+					resType := node.Metadata["resource_type"]
+					// CloudFront và Route53 là dịch vụ Global, nằm trực tiếp dưới AWS Cloud
+					if resType == "aws_cloudfront_distribution" || resType == "aws_route53_zone" {
+						node.ParentID = "aws-cloud-group"
+					} else {
+						node.ParentID = "aws-region-group"
+					}
+					nodeMap[id] = node
+				}
+			}
+		}
+
+		// Xóa group terraform-group cũ đi nếu không còn node nào sử dụng
+		hasTerraformNodes := false
+		for _, node := range nodeMap {
+			if node.ParentID == "terraform-group" {
+				hasTerraformNodes = true
+				break
+			}
+		}
+		if !hasTerraformNodes {
+			delete(nodeMap, "terraform-group")
+		}
+	}
+
 	var hasDockerNginx bool
 	var hasDockerApp bool
 	var dockerAppID string
@@ -257,6 +312,83 @@ func CompileGraph(workspacePath string) (*domain.GraphSchema, error) {
 						}
 					}
 					break // Đã match target, chuyển sang biến môi trường tiếp theo
+				}
+			}
+		}
+	}
+	// --- Giai đoạn 2.6: Tự động suy luận Edge theo quy tắc đặt tên (Heuristic Naming Linker) ---
+	for id, node := range nodeMap {
+		if node.Type != "app" && node.Type != "gateway" {
+			continue
+		}
+		idLower := strings.ToLower(id)
+
+		for targetID, targetNode := range nodeMap {
+			if id == targetID {
+				continue
+			}
+			targetIDLower := strings.ToLower(targetID)
+
+			// Heuristic 1: Kết nối app -> database có cùng prefix tên (e.g. carts -> carts-db, catalogue -> catalogue-db)
+			if targetNode.Type == "database" {
+				if node.ParentID == targetNode.ParentID {
+					if strings.HasPrefix(targetIDLower, idLower+"-") || strings.HasPrefix(targetIDLower, idLower+"_") || targetIDLower == idLower+"db" {
+						edgeKey := fmt.Sprintf("%s->%s", id, targetID)
+						if _, ok := edgeMap[edgeKey]; !ok {
+							edgeMap[edgeKey] = domain.Edge{
+								ID:     fmt.Sprintf("%s-%s", id, targetID),
+								Source: id,
+								Target: targetID,
+								Label:  "SQL Connect",
+							}
+						}
+					}
+				}
+			}
+
+			// Heuristic 2: Kết nối gateway (e.g. edge-router) -> frontend
+			if node.Type == "gateway" && (targetIDLower == "front-end" || targetIDLower == "frontend" || targetIDLower == "web") {
+				if node.ParentID == targetNode.ParentID {
+					edgeKey := fmt.Sprintf("%s->%s", id, targetID)
+					if _, ok := edgeMap[edgeKey]; !ok {
+						edgeMap[edgeKey] = domain.Edge{
+							ID:     fmt.Sprintf("%s-%s", id, targetID),
+							Source: id,
+							Target: targetID,
+							Label:  "HTTP Proxy",
+						}
+					}
+				}
+			}
+
+			// Heuristic 3: Kết nối queue-master -> rabbitmq
+			if idLower == "queue-master" && targetIDLower == "rabbitmq" {
+				if node.ParentID == targetNode.ParentID {
+					edgeKey := fmt.Sprintf("%s->%s", id, targetID)
+					if _, ok := edgeMap[edgeKey]; !ok {
+						edgeMap[edgeKey] = domain.Edge{
+							ID:     fmt.Sprintf("%s-%s", id, targetID),
+							Source: id,
+							Target: targetID,
+							Label:  "AMQP Connect",
+						}
+					}
+				}
+			}
+
+			// Heuristic 4: Kết nối front-end -> các service vi dịch vụ vệ tinh (catalogue, carts, orders, user, shipping, payment)
+			if (idLower == "front-end" || idLower == "frontend") && node.ParentID == targetNode.ParentID {
+				isMicroservice := targetIDLower == "catalogue" || targetIDLower == "carts" || targetIDLower == "orders" || targetIDLower == "user" || targetIDLower == "shipping" || targetIDLower == "payment"
+				if isMicroservice {
+					edgeKey := fmt.Sprintf("%s->%s", id, targetID)
+					if _, ok := edgeMap[edgeKey]; !ok {
+						edgeMap[edgeKey] = domain.Edge{
+							ID:     fmt.Sprintf("%s-%s", id, targetID),
+							Source: id,
+							Target: targetID,
+							Label:  "HTTP API",
+						}
+					}
 				}
 			}
 		}

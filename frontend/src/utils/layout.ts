@@ -5,7 +5,6 @@ import type { Node, Edge } from '@xyflow/react';
 const nodeWidth = 240;
 const groupPadding = 45; // Spacing margin for child nodes inside parents
 const rowHeight = 180;
-const colWidth = 360;
 
 const getNodeHeight = (node: Node): number => {
   if (node.type === 'group') return 0;
@@ -53,7 +52,8 @@ const getRowIndex = (node: Node): number => {
   if (
     typeLower === 'gateway' ||
     idLower.includes('nginx') || idLower.includes('gateway') || idLower.includes('proxy') || idLower.includes('caddy') || idLower.includes('traefik') ||
-    idLower.includes('frontend') || labelLower.includes('frontend') || idLower.includes('next') || labelLower.includes('next')
+    idLower.includes('frontend') || labelLower.includes('frontend') || idLower.includes('next') || labelLower.includes('next') ||
+    idLower.includes('cloudfront') || labelLower.includes('cloudfront')
   ) {
     return 0;
   }
@@ -73,7 +73,7 @@ const getRowIndex = (node: Node): number => {
   return 1;
 };
 
-export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'TB') => {
+export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'LR') => {
   const isHorizontal = direction === 'LR';
   
   const groupNodes = nodes.filter((n) => n.type === 'group');
@@ -83,8 +83,22 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'T
   const groupDimensions: Record<string, { width: number; height: number }> = {};
   const childRelativePositions: Record<string, { x: number; y: number }> = {};
 
-  groupNodes.forEach((group) => {
-    const children = leafNodes.filter((n) => n.parentId === group.id);
+  const getGroupDepth = (id: string): number => {
+    let depth = 0;
+    let curr: Node | undefined = nodes.find(n => n.id === id);
+    while (curr) {
+      const pId = curr.parentId;
+      if (!pId) break;
+      depth++;
+      curr = nodes.find(n => n.id === pId);
+    }
+    return depth;
+  };
+
+  const sortedGroups = [...groupNodes].sort((a, b) => getGroupDepth(b.id) - getGroupDepth(a.id));
+
+  sortedGroups.forEach((group) => {
+    const children = nodes.filter((n) => n.parentId === group.id);
     if (children.length === 0) {
       groupDimensions[group.id] = { width: 320, height: 160 };
       return;
@@ -109,42 +123,42 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'T
       const M = rowNodes.length;
       if (M === 0) continue;
 
+      const widths = rowNodes.map(n => n.type === 'group' ? groupDimensions[n.id].width : nodeWidth);
+      const heights = rowNodes.map(n => n.type === 'group' ? groupDimensions[n.id].height : getNodeHeight(n));
+      
+      const totalWidth = widths.reduce((sum, w) => sum + w, 0) + (M - 1) * 80;
+      let startX = -totalWidth / 2;
+
       rowNodes.forEach((child, i) => {
-        const finalX = (i - (M - 1) / 2) * colWidth;
+        const w = widths[i];
+        const h = heights[i];
+        const finalX = startX + w / 2;
         const finalY = r * rowHeight;
         coords[child.id] = { x: finalX, y: finalY };
+        
+        startX += w + 80;
 
-        if (finalX < minX) minX = finalX;
-        if (finalX > maxX) maxX = finalX;
+        if (finalX - w/2 < minX) minX = finalX - w/2;
+        if (finalX + w/2 > maxX) maxX = finalX + w/2;
         if (finalY < minY) minY = finalY;
-        if (finalY > maxY) maxY = finalY;
+        if (finalY + h > maxY) maxY = finalY + h;
       });
     }
 
-    // Translate to top-left relative coordinates and set dimensions
-    let maxContentBottom = -Infinity;
-    children.forEach((child) => {
-      const coord = coords[child.id];
-      const childHeight = getNodeHeight(child);
-      const bottom = coord.y + childHeight;
-      if (bottom > maxContentBottom) {
-        maxContentBottom = bottom;
-      }
-    });
-
-    const width = (maxX - minX) + nodeWidth + groupPadding * 2;
-    const height = (maxContentBottom - minY) + groupPadding * 2 + 15;
+    const width = (maxX - minX) + groupPadding * 2;
+    const height = (maxY - minY) + groupPadding * 2 + 15;
     groupDimensions[group.id] = { width, height };
 
     children.forEach((child) => {
       const coord = coords[child.id];
-      const childX = coord.x - minX + groupPadding;
+      const w = child.type === 'group' ? groupDimensions[child.id].width : nodeWidth;
+      const childX = coord.x - w/2 - minX + groupPadding;
       const childY = coord.y - minY + groupPadding + 15;
       childRelativePositions[child.id] = { x: childX, y: childY };
     });
   });
 
-  // 2. Initialize Dagre to layout groups and non-nested leaf nodes
+  // 2. Initialize Dagre to layout top-level groups and non-nested leaf nodes
   const dagreGraph = new dagre.graphlib.Graph({ compound: false });
   dagreGraph.setDefaultEdgeLabel(() => ({}));
   dagreGraph.setGraph({ 
@@ -153,8 +167,8 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'T
     ranksep: 100
   });
 
-  // Add group nodes to Dagre with calculated custom dimensions
-  groupNodes.forEach((group) => {
+  // Add top-level group nodes to Dagre with calculated custom dimensions
+  groupNodes.filter(g => !g.parentId).forEach((group) => {
     const dim = groupDimensions[group.id];
     dagreGraph.setNode(group.id, { width: dim.width, height: dim.height });
   });
@@ -171,11 +185,18 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'T
     let src = edge.source;
     let tgt = edge.target;
 
-    // Route edges via their parent groups in Dagre
-    const srcNode = leafNodes.find((n) => n.id === src);
-    const tgtNode = leafNodes.find((n) => n.id === tgt);
-    if (srcNode && srcNode.parentId) src = srcNode.parentId;
-    if (tgtNode && tgtNode.parentId) tgt = tgtNode.parentId;
+    const findTopLevelParent = (nodeId: string): string => {
+      let curr: Node | undefined = nodes.find(n => n.id === nodeId);
+      while (curr) {
+        const pId = curr.parentId;
+        if (!pId) break;
+        curr = nodes.find(n => n.id === pId);
+      }
+      return curr ? curr.id : nodeId;
+    };
+
+    src = findTopLevelParent(src);
+    tgt = findTopLevelParent(tgt);
 
     if (src !== tgt && dagreGraph.hasNode(src) && dagreGraph.hasNode(tgt)) {
       dagreGraph.setEdge(src, tgt);
@@ -189,8 +210,17 @@ export const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'T
   const updatedGroupNodes = groupNodes.map((group) => {
     const groupPos = dagreGraph.node(group.id);
     const dim = groupDimensions[group.id];
-    const x = groupPos.x - dim.width / 2;
-    const y = groupPos.y - dim.height / 2;
+    let x = 0;
+    let y = 0;
+
+    if (group.parentId) {
+      const relPos = childRelativePositions[group.id];
+      x = relPos.x;
+      y = relPos.y;
+    } else if (groupPos) {
+      x = groupPos.x - dim.width / 2;
+      y = groupPos.y - dim.height / 2;
+    }
 
     return {
       ...group,

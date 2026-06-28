@@ -1,5 +1,5 @@
 import { useGraphStore } from '../store/useGraphStore';
-import { Layers, Folder, Cpu } from 'lucide-react';
+import { Layers, Folder, Cpu, Cloud, Flag } from 'lucide-react';
 
 interface GroupNodeProps {
   id: string;
@@ -14,8 +14,6 @@ export default function GroupNode({ id, data }: GroupNodeProps) {
   const theme = useGraphStore((state) => state.theme);
   const childCount = useGraphStore((state) => state.nodes.filter((n) => n.parentId === id).length);
 
-  const borderClr = data.borderClr || '#3b82f6';
-  
   // Clean emoji from label
   const cleanLabel = data.label
     .replace(/[\u{1F300}-\u{1F9FF}]|[\u{2700}-\u{27BF}]|[\u{2600}-\u{26FF}]|[\u{1F600}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E6}-\u{1F1FF}]|[\u{2B50}]/gu, '')
@@ -23,11 +21,27 @@ export default function GroupNode({ id, data }: GroupNodeProps) {
 
   const labelLower = cleanLabel.toLowerCase();
 
+  let isAwsCloud = labelLower.includes('aws cloud');
+  let isAwsRegion = labelLower.includes('region');
+
+  let borderClr = data.borderClr || '#3b82f6';
+  if (isAwsCloud) {
+    borderClr = theme === 'dark' ? '#3f3f46' : '#64748b';
+  } else if (isAwsRegion) {
+    borderClr = '#14b8a6'; // teal-500
+  }
+
   // Choose icon and dynamic pluralized category text
   let groupIcon = <Layers className="h-3.5 w-3.5" style={{ color: borderClr }} />;
   let categoryUnit = 'Nodes';
 
-  if (labelLower.includes('docker')) {
+  if (isAwsCloud) {
+    groupIcon = <Cloud className="h-3.5 w-3.5 text-slate-400 dark:text-zinc-500" />;
+    categoryUnit = childCount === 1 ? 'Resource' : 'Resources';
+  } else if (isAwsRegion) {
+    groupIcon = <Flag className="h-3.5 w-3.5 text-teal-500" />;
+    categoryUnit = childCount === 1 ? 'Resource' : 'Resources';
+  } else if (labelLower.includes('docker')) {
     groupIcon = <Cpu className="h-3.5 w-3.5 text-cyan-500" />;
     categoryUnit = childCount === 1 ? 'Container' : 'Containers';
   } else if (labelLower.includes('local') || labelLower.includes('workspace') || labelLower.includes('app')) {
@@ -51,8 +65,19 @@ export default function GroupNode({ id, data }: GroupNodeProps) {
   const isDiffAdd = (data as any).isDiffAdd;
   const isDiffDelete = (data as any).isDiffDelete;
 
-  let groupBorderColor = theme === 'dark' ? `${borderClr}25` : `${borderClr}45`;
+  let groupBorderColor = theme === 'dark' ? `${borderClr}35` : `${borderClr}55`;
   let groupLeftBorderColor = borderClr;
+  let borderLeftWidth = '6px';
+  let borderStyle = 'solid';
+
+  if (isAwsCloud) {
+    borderLeftWidth = '2px';
+    groupBorderColor = theme === 'dark' ? '#3f3f46' : '#94a3b8';
+  } else if (isAwsRegion) {
+    borderLeftWidth = '2px';
+    borderStyle = 'dashed';
+    groupBorderColor = '#14b8a6';
+  }
 
   if (isDiffAdd) {
     groupBorderColor = theme === 'dark' ? '#22c55e25' : '#22c55e45';
@@ -69,8 +94,9 @@ export default function GroupNode({ id, data }: GroupNodeProps) {
       className="rounded-3xl border-2 h-full w-full relative transition-all duration-300 pointer-events-none"
       style={{
         borderColor: groupBorderColor, 
-        borderLeftColor: groupLeftBorderColor,
-        borderLeftWidth: '6px', // Premium vertical accent sidebar
+        borderLeftColor: isAwsCloud || isAwsRegion ? groupBorderColor : groupLeftBorderColor,
+        borderLeftWidth: borderLeftWidth,
+        borderStyle: borderStyle,
         background: containerBg,
         boxShadow: `0 20px 40px -10px ${shadowColor}, inset 0 0 24px ${borderClr}08`,
         opacity: groupOpacity,
